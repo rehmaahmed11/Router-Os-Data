@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1118">
+  <meta name="description" content="An offline-friendly, interactive student lab for MikroTik RouterOS CHR on QEMU x86-64, with a clearly labelled WebFig learning simulator.">
+  <title>RouterOS CHR · QEMU x86-64 Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1118;
+      --panel: #111a23;
+      --panel-2: #151f29;
+      --panel-3: #192630;
+      --line: #263542;
+      --line-soft: rgba(151, 173, 189, .12);
+      --text: #edf5f7;
+      --muted: #a1b1bb;
+      --muted-2: #71838e;
+      --lime: #c5f56a;
+      --lime-ink: #16200e;
+      --cyan: #6ed8de;
+      --blue: #81b9ff;
+      --amber: #ffc76d;
+      --red: #ff8888;
+      --shadow: 0 18px 60px rgba(0, 0, 0, .24);
+      --radius: 18px;
+      --sidebar-width: 292px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--bg); color: var(--text); }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; }
+    .app-shell { min-height: 100vh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
+    .sidebar {
+      height: 100vh; height: 100dvh; position: sticky; top: 0; overflow-y: auto; z-index: 20;
+      display: flex; flex-direction: column; padding: 22px 15px 15px; background: #0d151d;
+      border-right: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: #344552 transparent;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 9px 17px; border-bottom: 1px solid var(--line-soft); }
+    .brand-symbol { width: 39px; height: 39px; display: grid; place-items: center; flex: 0 0 39px; border-radius: 12px; color: var(--lime); background: rgba(197,245,106,.1); border: 1px solid rgba(197,245,106,.25); }
+    .brand-symbol svg { width: 23px; height: 23px; }
+    .brand-name { font-weight: 770; font-size: 14px; letter-spacing: -.02em; line-height: 1.25; }
+    .brand-sub { font-size: 10px; color: var(--muted-2); letter-spacing: .12em; text-transform: uppercase; margin-top: 4px; }
+    .lab-pill { display: flex; align-items: center; gap: 7px; width: fit-content; margin: 15px 8px 17px; padding: 6px 9px; border-radius: 999px; border: 1px solid rgba(255,199,109,.24); color: #f9d898; background: rgba(255,199,109,.07); font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .lab-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(255,199,109,.11); }
+    .sidebar-tools { display: grid; gap: 8px; padding: 0 5px 16px; }
+    .search-wrap { position: relative; }
+    .search-wrap svg { position: absolute; left: 12px; top: 11px; width: 15px; height: 15px; stroke: var(--muted-2); pointer-events: none; }
+    .search-input { width: 100%; height: 38px; padding: 0 12px 0 36px; color: var(--text); outline: 0; background: #101a23; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+    .search-input:focus, input:focus { border-color: rgba(197,245,106,.65); box-shadow: 0 0 0 3px rgba(197,245,106,.1); }
+    .sidebar-nav { padding: 0 2px; }
+    .nav-section { margin: 0 0 13px; }
+    .nav-section-title { display: flex; align-items: center; justify-content: space-between; padding: 0 9px 7px; color: #71838e; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+    .nav-section-count { color: #526672; font-variant-numeric: tabular-nums; }
+    .nav-item { position: relative; width: 100%; min-height: 36px; display: flex; gap: 9px; align-items: center; padding: 7px 9px; margin: 2px 0; border: 1px solid transparent; border-radius: 9px; text-align: left; color: #a8b8c1; background: transparent; cursor: pointer; transition: .16s ease; }
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,.035); }
+    .nav-item.active { color: var(--text); border-color: rgba(197,245,106,.16); background: rgba(197,245,106,.075); }
+    .nav-item.active::before { content: ""; position: absolute; left: -3px; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--lime); }
+    .nav-icon { flex: 0 0 19px; width: 19px; text-align: center; font-size: 13px; opacity: .85; }
+    .nav-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 570; }
+    .nav-num { margin-left: auto; color: #637681; font-size: 9px; font-variant-numeric: tabular-nums; }
+    .nav-done { width: 14px; height: 14px; display: grid; place-items: center; margin-left: auto; border-radius: 50%; color: #0e1709; background: var(--lime); font-size: 9px; font-weight: 900; }
+    .sidebar-bottom { margin-top: auto; padding: 15px 8px 0; border-top: 1px solid var(--line-soft); }
+    .side-progress-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; color: var(--muted); font-size: 10px; }
+    .side-progress-top strong { color: var(--text); font-size: 11px; }
+    .progress-track { height: 5px; overflow: hidden; border-radius: 9px; background: #26343e; }
+    .progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8ccf52, var(--lime)); transition: width .25s ease; }
+    .side-small { padding-top: 12px; color: #637681; font-size: 9px; line-height: 1.55; }
+    .main-column { min-width: 0; }
+    .topbar { position: sticky; top: 0; z-index: 10; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 34px; background: rgba(11,17,24,.91); border-bottom: 1px solid var(--line-soft); backdrop-filter: blur(14px); }
+    .top-left { min-width: 0; display: flex; align-items: center; gap: 11px; }
+    .mobile-menu { display: none !important; }
+    .crumb { color: #738691; font-size: 11px; white-space: nowrap; }
+    .crumb strong { color: #dae6e9; font-weight: 650; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .progress-chip { display: flex; align-items: center; gap: 8px; padding: 7px 10px; color: #b3c2c9; border: 1px solid var(--line); background: #101820; border-radius: 9px; font-size: 10px; white-space: nowrap; }
+    .progress-chip b { color: var(--lime); font-variant-numeric: tabular-nums; }
+    .btn { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; color: #dce7ea; background: #15212a; font-size: 11px; font-weight: 700; cursor: pointer; transition: .16s ease; text-decoration: none; }
+    .btn:hover { background: #1b2a35; border-color: #415361; transform: translateY(-1px); }
+    .btn:focus-visible, .nav-item:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+    .btn.primary { color: var(--lime-ink); background: var(--lime); border-color: var(--lime); }
+    .btn.primary:hover { background: #d3fb8a; }
+    .btn.ghost { color: #a9bac1; background: transparent; }
+    .btn.small { min-height: 31px; padding: 6px 9px; font-size: 10px; }
+    .btn svg { width: 14px; height: 14px; }
+    main { max-width: 1600px; margin: 0 auto; padding: 34px 38px 74px; }
+    .eyebrow { color: var(--lime); text-transform: uppercase; letter-spacing: .13em; font-size: 9px; font-weight: 850; }
+    .home-hero { position: relative; overflow: hidden; min-height: 250px; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(220px,.85fr); gap: 24px; align-items: center; padding: 31px 34px; border: 1px solid #2b3a44; border-radius: 22px; background: radial-gradient(circle at 82% 9%, rgba(110,216,222,.13), transparent 27%), linear-gradient(125deg, #16232c 0%, #121b24 53%, #172621 100%); box-shadow: var(--shadow); }
+    .home-hero::after { content: ""; position: absolute; right: -70px; bottom: -156px; width: 380px; height: 380px; border-radius: 50%; border: 1px solid rgba(197,245,106,.12); box-shadow: 0 0 0 32px rgba(197,245,106,.025), 0 0 0 66px rgba(197,245,106,.02); pointer-events: none; }
+    .hero-copy, .hero-side { position: relative; z-index: 1; }
+    h1, h2, h3, p { margin-top: 0; }
+    .home-hero h1 { max-width: 700px; margin: 13px 0 13px; font-size: clamp(31px, 4vw, 51px); line-height: 1.02; letter-spacing: -.052em; font-weight: 780; }
+    .home-hero h1 em { color: var(--lime); font-style: normal; }
+    .home-hero p { max-width: 640px; margin-bottom: 21px; color: #a8bbc4; font-size: 13px; line-height: 1.7; }
+    .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    .hero-side { justify-self: end; width: min(100%, 335px); }
+    .stat-card { padding: 16px; border: 1px solid rgba(181,203,209,.14); border-radius: 15px; background: rgba(8,14,19,.47); backdrop-filter: blur(12px); }
+    .stat-card-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .stat-title { color: #94a8b2; font-size: 10px; }
+    .status-tag { display: inline-flex; gap: 6px; align-items: center; padding: 5px 8px; border: 1px solid rgba(255,199,109,.25); color: #f7d18a; border-radius: 6px; font-size: 8px; font-weight: 850; letter-spacing: .08em; }
+    .status-tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 14px; }
+    .stat-number { display: block; color: var(--text); font-size: 23px; line-height: 1.2; font-weight: 760; letter-spacing: -.04em; }
+    .stat-label { color: #82949d; font-size: 9px; }
+    .honesty-banner { display: flex; gap: 12px; align-items: flex-start; margin: 18px 0 22px; padding: 13px 15px; border: 1px solid rgba(255,199,109,.24); border-radius: 12px; color: #dcc99f; background: rgba(255,199,109,.055); font-size: 11px; line-height: 1.62; }
+    .honesty-banner strong { color: #ffe0a1; }
+    .notice-icon { flex: 0 0 20px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; color: var(--amber); background: rgba(255,199,109,.12); font-size: 11px; font-weight: 900; }
+    .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 14px; margin: 30px 0 13px; }
+    .section-heading h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+    .section-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
+    .architecture { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }
+    .arch-card { position: relative; min-height: 116px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); }
+    .arch-card:not(:last-child)::after { content: "›"; position: absolute; right: -10px; top: 44%; z-index: 2; width: 18px; height: 18px; display: grid; place-items: center; color: var(--lime); background: #0b1118; font-size: 18px; }
+    .arch-no { color: #697e88; font-size: 9px; font-weight: 800; }
+    .arch-card h3 { margin: 14px 0 5px; font-size: 12px; }
+    .arch-card p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .map-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 11px; }
+    .map-card { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: #101820; }
+    .map-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+    .map-card-head strong { color: #e4eef0; font-size: 11px; }
+    .map-card-head span { color: #8497a0; font-size: 9px; }
+    .map-card p { margin: 0; color: #94a6af; font-size: 10px; line-height: 1.6; }
+    .bottom-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(280px,.8fr); gap: 13px; margin-top: 28px; }
+    .info-card { padding: 17px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
+    .info-card h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: -.02em; }
+    .info-card > p { color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .prereq-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+    .prereq-list li { display: flex; gap: 8px; align-items: start; padding: 9px; border-radius: 9px; color: #b4c2c7; background: #16212a; font-size: 9px; line-height: 1.5; }
+    .check-mark { flex: 0 0 15px; color: var(--lime); font-weight: 900; }
+    .url-form { display: flex; gap: 7px; margin-top: 12px; }
+    .field { min-width: 0; flex: 1; height: 37px; padding: 0 11px; outline: none; color: var(--text); background: #0c141b; border: 1px solid #31424d; border-radius: 8px; font-size: 10px; }
+    .field-label { display: block; margin: 12px 0 6px; color: #a5b5bc; font-size: 9px; font-weight: 700; }
+    .small-note { margin: 9px 0 0 !important; color: #738690 !important; font-size: 9px !important; line-height: 1.5 !important; }
+    .doc-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+    .doc-link { display: inline-flex; gap: 5px; align-items: center; padding: 6px 8px; color: #a9bdc5; border: 1px solid #30414c; border-radius: 7px; font-size: 9px; text-decoration: none; }
+    .doc-link:hover { color: var(--lime); border-color: rgba(197,245,106,.3); }
+    .module-header { margin: 6px 0 23px; }
+    .module-kicker { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 10px; }
+    .module-kicker .step-count { color: var(--lime); font-weight: 850; letter-spacing: .08em; }
+    .layer-pill { padding: 5px 8px; border: 1px solid #2d414b; border-radius: 999px; color: #8fa4ad; background: #111a22; font-size: 9px; }
+    .module-header h1 { margin: 13px 0 8px; font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: -.045em; }
+    .module-header > p { max-width: 840px; margin: 0; color: #9daeb7; font-size: 12px; line-height: 1.65; }
+    .module-grid { display: grid; grid-template-columns: minmax(0,1.13fr) minmax(335px,.87fr); align-items: start; gap: 18px; }
+    .lesson-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: 0 10px 34px rgba(0,0,0,.12); }
+    .goal-box { display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 11px; align-items: start; padding: 14px; border: 1px solid rgba(197,245,106,.16); border-radius: 12px; background: rgba(197,245,106,.045); }
+    .goal-icon { width: 28px; height: 28px; display: grid; place-items: center; color: var(--lime); border-radius: 8px; background: rgba(197,245,106,.11); font-size: 13px; }
+    .goal-box strong { display: block; margin: 1px 0 4px; font-size: 11px; }
+    .goal-box p { margin: 0; color: #afc0c5; font-size: 10px; line-height: 1.6; }
+    .lesson-section { margin-top: 20px; }
+    .lesson-section h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; letter-spacing: -.02em; }
+    .section-index { width: 19px; height: 19px; display: grid; place-items: center; border-radius: 6px; color: #a8bdc4; background: #1a2933; font-size: 9px; }
+    .lesson-section > p { margin: 0 0 9px; color: #9eafb7; font-size: 10px; line-height: 1.65; }
+    .action-list { display: grid; gap: 8px; margin: 0; padding: 0; counter-reset: actions; list-style: none; }
+    .action-list li { position: relative; min-height: 36px; display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: start; color: #b6c4c9; font-size: 10px; line-height: 1.65; }
+    .action-list li::before { counter-increment: actions; content: counter(actions); width: 21px; height: 21px; display: grid; place-items: center; border: 1px solid #2d404b; border-radius: 7px; color: #9fb1b8; background: #16212a; font-size: 9px; font-weight: 800; }
+    .action-list strong { color: #e2ecee; }
+    .path-strip { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 11px 0 0; }
+    .path-item { padding: 5px 7px; border: 1px solid #2b3d47; border-radius: 6px; color: #afc0c5; background: #121d25; font-size: 9px; }
+    .path-chevron { color: #667b85; font-size: 10px; }
+    .concept-row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 11px; }
+    .concept-cell { padding: 11px; border: 1px solid #273944; border-radius: 10px; background: #121c24; }
+    .concept-cell span { display: block; margin-bottom: 5px; color: #738993; text-transform: uppercase; font-size: 8px; font-weight: 850; letter-spacing: .1em; }
+    .concept-cell p { margin: 0; color: #b4c2c7; font-size: 9px; line-height: 1.55; }
+    .code-card { overflow: hidden; margin-top: 12px; border: 1px solid #263945; border-radius: 11px; background: #0b131a; }
+    .code-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #202f38; background: #121c24; }
+    .code-head span { color: #8da1aa; font-size: 9px; font-weight: 750; }
+    pre { max-width: 100%; overflow: auto; margin: 0; padding: 12px; color: #c9e6d0; font-size: 9px; line-height: 1.62; tab-size: 2; white-space: pre; scrollbar-width: thin; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .verify-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .verify-list li { display: grid; grid-template-columns: 16px 1fr; gap: 7px; align-items: start; color: #aebdc3; font-size: 10px; line-height: 1.55; }
+    .verify-list li::before { content: "✓"; display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; color: var(--lime); background: rgba(197,245,106,.12); font-size: 9px; font-weight: 900; }
+    .caution-box { display: flex; gap: 9px; align-items: flex-start; margin-top: 12px; padding: 11px; border: 1px solid rgba(255,199,109,.17); border-radius: 10px; color: #bfaf8e; background: rgba(255,199,109,.04); font-size: 9px; line-height: 1.6; }
+    .caution-box strong { color: #f5d89f; }
+    .caution-symbol { color: var(--amber); font-size: 12px; }
+    .live-connect-card { margin-top: 15px; padding: 13px; border: 1px solid rgba(110,216,222,.18); border-radius: 11px; background: rgba(110,216,222,.045); }
+    .live-connect-card h3 { margin: 0 0 4px; font-size: 11px; }
+    .live-connect-card p { margin: 0; color: #9db0b7; font-size: 9px; line-height: 1.55; }
+    .live-connect-card .url-form { margin-top: 10px; }
+    .quiz-box { margin-top: 16px; padding: 13px; border: 1px solid #2c3d47; border-radius: 11px; background: #121c24; }
+    .quiz-box h3 { margin: 0 0 9px; font-size: 11px; }
+    .quiz-question { margin: 0 0 9px; color: #c5d2d6; font-size: 10px; line-height: 1.5; }
+    .quiz-options { display: grid; gap: 6px; }
+    .quiz-option { display: flex; gap: 8px; align-items: start; padding: 8px; border: 1px solid #273842; border-radius: 8px; color: #aebdc3; background: #101820; cursor: pointer; font-size: 9px; line-height: 1.5; }
+    .quiz-option:has(input:checked) { border-color: rgba(197,245,106,.34); background: rgba(197,245,106,.04); }
+    .quiz-option input { accent-color: var(--lime); margin: 2px 0 0; }
+    .quiz-feedback { min-height: 14px; margin: 8px 0 0; color: #8ba0a7; font-size: 9px; }
+    .quiz-feedback.good { color: var(--lime); }
+    .quiz-feedback.bad { color: #ffbd79; }
+    .lesson-footer { display: flex; justify-content: space-between; align-items: center; gap: 9px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+    .lesson-footer .left-actions, .lesson-footer .right-actions { display: flex; gap: 7px; }
+    .visual-card { position: sticky; top: 81px; overflow: hidden; min-width: 0; border: 1px solid #2b3c47; border-radius: var(--radius); background: #0f171e; box-shadow: var(--shadow); }
+    .visual-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 13px; border-bottom: 1px solid #26343d; background: #131e27; }
+    .visual-head strong { display: block; margin-top: 4px; font-size: 10px; }
+    .visual-head .eyebrow { font-size: 8px; }
+    .visual-mode { padding: 5px 7px; color: #ffd88e; border: 1px solid rgba(255,199,109,.23); border-radius: 6px; background: rgba(255,199,109,.055); font-size: 8px; font-weight: 850; letter-spacing: .07em; white-space: nowrap; }
+    .screen-wrap { padding: 12px; }
+    .screen-note { display: flex; justify-content: space-between; gap: 8px; margin: 8px 1px 0; color: #71858e; font-size: 8px; line-height: 1.5; }
+    .mock-browser { overflow: hidden; border: 1px solid #334651; border-radius: 9px; background: #f4f6f7; color: #25343d; box-shadow: 0 8px 22px rgba(0,0,0,.22); }
+    .mock-chrome { height: 29px; display: flex; gap: 7px; align-items: center; padding: 0 9px; background: #e7ecef; border-bottom: 1px solid #d5dce0; }
+    .browser-dots { display: flex; gap: 3px; }
+    .browser-dots i { width: 5px; height: 5px; border-radius: 50%; background: #a4b0b6; }
+    .mock-address { flex: 1; overflow: hidden; padding: 4px 8px; border-radius: 4px; background: #f9fbfb; color: #64777f; font-family: ui-monospace, monospace; font-size: 7px; white-space: nowrap; text-overflow: ellipsis; }
+    .mock-shield { color: #87999f; font-size: 8px; }
+    .mock-topbar { height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; color: #e8f0f1; background: #25343d; }
+    .mock-logo { display: flex; align-items: center; gap: 6px; font-size: 8px; font-weight: 850; letter-spacing: .04em; }
+    .mock-logo-icon { width: 14px; height: 14px; display: grid; place-items: center; border: 1px solid #89a6ad; border-radius: 4px; color: #bddd86; font-size: 8px; }
+    .mock-device { color: #b8c7cb; font-size: 7px; }
+    .mock-user { padding: 4px 6px; border-radius: 4px; color: #d9e4e6; background: rgba(255,255,255,.1); font-size: 7px; }
+    .mock-body { min-height: 330px; display: grid; grid-template-columns: 91px minmax(0,1fr); }
+    .mock-menu { padding: 8px 5px; border-right: 1px solid #dfe5e8; background: #edf1f2; }
+    .mock-menu-label { margin: 5px 5px 4px; color: #89989e; text-transform: uppercase; font-size: 6px; font-weight: 850; letter-spacing: .11em; }
+    .mock-menu-item { display: flex; align-items: center; gap: 5px; padding: 5px 6px; margin-bottom: 2px; border-radius: 4px; color: #596d75; font-size: 7px; }
+    .mock-menu-item .mi { width: 9px; text-align: center; color: #7f939a; font-size: 8px; }
+    .mock-menu-item.active { color: #2c481d; background: #dcebc9; font-weight: 750; }
+    .mock-content { min-width: 0; padding: 12px 11px; background: #fbfcfc; }
+    .mock-breadcrumb { margin-bottom: 7px; color: #839399; font-size: 6px; }
+    .mock-page-head { display: flex; justify-content: space-between; align-items: center; gap: 7px; padding-bottom: 8px; border-bottom: 1px solid #e5eaec; }
+    .mock-page-head h3 { margin: 0; color: #364a52; font-size: 10px; letter-spacing: -.02em; }
+    .mock-toolbar { display: flex; gap: 4px; }
+    .mock-tool-btn { padding: 4px 6px; border: 1px solid #d6dfe2; border-radius: 4px; color: #5f737a; background: #fff; font-size: 6px; }
+    .mock-toolbar .mock-tool-btn:first-child { color: white; border-color: #3d7951; background: #4b9564; }
+    .mock-subtabs { display: flex; gap: 10px; padding: 8px 0; color: #86969c; font-size: 6px; }
+    .mock-subtabs .sel { padding-bottom: 3px; color: #3d7951; border-bottom: 1px solid #4b9564; font-weight: 750; }
+    .mock-table { width: 100%; border-collapse: collapse; color: #556970; font-size: 6.5px; }
+    .mock-table th { padding: 6px 4px; color: #7f9096; text-align: left; font-size: 6px; font-weight: 700; border-bottom: 1px solid #e2e8ea; }
+    .mock-table td { padding: 7px 4px; border-bottom: 1px solid #edf0f1; }
+    .mock-table td:first-child { color: #445a60; font-weight: 700; }
+    .mock-status { display: inline-flex; gap: 4px; align-items: center; padding: 3px 5px; border-radius: 9px; color: #39734b; background: #e7f3e8; font-size: 6px; white-space: nowrap; }
+    .mock-status::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: #52a66a; }
+    .mock-status.off { color: #876d42; background: #f7efd9; }
+    .mock-status.off::before { background: #d29e43; }
+    .mock-summary-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; margin-top: 9px; }
+    .mock-summary { padding: 8px; border: 1px solid #e2e8e9; border-radius: 5px; background: #fff; }
+    .mock-summary span { display: block; margin-bottom: 4px; color: #88979b; font-size: 6px; }
+    .mock-summary b { color: #43565c; font-size: 8px; }
+    .mock-inline-note { margin-top: 8px; padding: 7px; border: 1px solid #e2e9de; border-radius: 5px; color: #60705a; background: #f2f7ee; font-size: 6.5px; line-height: 1.5; }
+    .mock-form { display: grid; gap: 5px; margin-top: 8px; }
+    .mock-form-row { min-height: 22px; display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 5px; align-items: center; color: #74848a; font-size: 6.5px; }
+    .mock-input { overflow: hidden; padding: 5px 6px; border: 1px solid #dce3e5; border-radius: 4px; color: #4a6067; background: #fff; white-space: nowrap; text-overflow: ellipsis; }
+    .mock-terminal { overflow: hidden; border: 1px solid #354b57; border-radius: 10px; background: #081119; box-shadow: 0 8px 22px rgba(0,0,0,.24); }
+    .term-bar { height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #21333d; color: #8fa7af; background: #14212a; font-size: 8px; }
+    .term-title { display: flex; align-items: center; gap: 6px; }
+    .term-light { width: 6px; height: 6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 7px rgba(197,245,106,.6); }
+    .term-screen { min-height: 248px; padding: 15px 13px; color: #aac7ae; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 8px; line-height: 1.85; }
+    .term-dim { color: #647e83; }
+    .term-command { color: #c8eb7b; }
+    .term-prompt { color: #73dce1; }
+    .term-warning { color: #ffd17d; }
+    .term-blink { display: inline-block; width: 6px; height: 11px; margin-left: 2px; vertical-align: -2px; background: #c5f56a; animation: blink 1s steps(2,start) infinite; }
+    @keyframes blink { to { visibility: hidden; } }
+    .mock-login { min-height: 310px; display: grid; place-items: center; padding: 17px; background: linear-gradient(145deg,#edf2ef,#dce7e5); }
+    .login-card { width: min(100%, 225px); padding: 16px; border: 1px solid #d0d9d9; border-radius: 9px; background: #fff; box-shadow: 0 10px 28px rgba(42,61,65,.15); }
+    .login-mark { width: 31px; height: 31px; display: grid; place-items: center; margin: 0 auto 8px; border-radius: 9px; color: #34724b; background: #e7f2e8; font-size: 15px; font-weight: 900; }
+    .login-card h3 { margin: 0 0 4px; color: #344c51; text-align: center; font-size: 11px; }
+    .login-card p { margin: 0 0 11px; color: #7c8d91; text-align: center; font-size: 7px; }
+    .login-card label { display: block; margin: 7px 0 4px; color: #617378; font-size: 7px; font-weight: 700; }
+    .login-fake-input { padding: 7px; border: 1px solid #d9e1e2; border-radius: 4px; color: #67787c; background: #f9fbfb; font-family: ui-monospace, monospace; font-size: 7px; }
+    .login-submit { width: 100%; margin-top: 11px; padding: 7px; border: 0; border-radius: 5px; color: #fff; background: #47875c; font-size: 7px; font-weight: 800; }
+    .mock-login-note { margin-top: 9px; color: #879597; text-align: center; font-size: 6px; line-height: 1.5; }
+    .download-mock { min-height: 310px; padding: 17px 14px; background: #fbfcfc; color: #344a51; }
+    .download-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 11px; border-bottom: 1px solid #e2e8e9; }
+    .download-banner strong { font-size: 9px; }
+    .download-banner span { padding: 4px 6px; border-radius: 4px; color: #3e704c; background: #e7f2e8; font-size: 6px; font-weight: 800; }
+    .download-title { margin: 13px 0 4px; font-size: 11px; }
+    .download-subtitle { margin-bottom: 10px; color: #7a8c91; font-size: 7px; }
+    .download-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; margin-top: 6px; padding: 8px; border: 1px solid #e2e8e9; border-radius: 6px; background: #fff; }
+    .download-row b { display: block; color: #465a60; font-size: 7px; }
+    .download-row small { display: block; margin-top: 3px; color: #87969a; font-size: 6px; }
+    .download-row em { padding: 5px 7px; border-radius: 4px; color: #fff; background: #4b9564; font-size: 6px; font-style: normal; font-weight: 800; }
+    .download-footer { margin-top: 9px; color: #809095; font-size: 6px; line-height: 1.5; }
+    .layer-panel { margin: 0 12px 12px; padding: 11px; border: 1px solid #2a3c45; border-radius: 10px; background: #121c24; }
+    .layer-panel h3 { margin: 0 0 8px; color: #a2b5bb; font-size: 9px; }
+    .layer-stack { display: grid; gap: 5px; }
+    .layer-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 7px; align-items: center; padding: 6px 7px; border-radius: 6px; color: #8ea2aa; background: #17232c; font-size: 8px; }
+    .layer-row.active { color: #dce9e6; border: 1px solid rgba(197,245,106,.22); background: rgba(197,245,106,.055); }
+    .layer-row b { color: var(--lime); font-size: 8px; }
+    .visual-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 12px 12px; padding-top: 10px; border-top: 1px solid #24333d; }
+    .visual-foot span { color: #657981; font-size: 8px; }
+    .screen-switch { display: flex; gap: 5px; }
+    .screen-switch button { width: 23px; height: 23px; display: grid; place-items: center; border: 1px solid #2c404a; border-radius: 6px; color: #99aeb4; background: #15222b; cursor: pointer; font-size: 9px; }
+    .toast { position: fixed; right: 22px; bottom: 22px; z-index: 50; max-width: min(390px, calc(100vw - 44px)); padding: 11px 14px; border: 1px solid #41565e; border-radius: 10px; color: #e8f1ef; background: #18262e; box-shadow: var(--shadow); font-size: 10px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .no-results { margin: 0 8px; padding: 9px; color: #81939a; font-size: 10px; line-height: 1.55; }
+    .footer-note { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line-soft); color: #657881; font-size: 9px; line-height: 1.6; }
+    .footer-note a { color: #8ea7ad; }
+    .kbd { padding: 2px 5px; border: 1px solid #344650; border-radius: 4px; color: #9fb1b8; font-family: ui-monospace, monospace; font-size: 8px; }
+    @media (max-width: 1120px) {
+      :root { --sidebar-width: 258px; }
+      main { padding-left: 25px; padding-right: 25px; }
+      .topbar { padding-left: 25px; padding-right: 25px; }
+      .module-grid { grid-template-columns: minmax(0,1.08fr) minmax(300px,.92fr); gap: 13px; }
+      .lesson-card { padding: 16px; }
+    }
+    @media (max-width: 900px) {
+      .app-shell { grid-template-columns: minmax(0,1fr); }
+      .sidebar { position: fixed; left: 0; top: 0; width: min(310px, 86vw); transform: translateX(-103%); transition: transform .22s ease; box-shadow: 12px 0 40px rgba(0,0,0,.36); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-backdrop { position: fixed; inset: 0; z-index: 15; display: none; background: rgba(0,0,0,.5); }
+      .sidebar-backdrop.show { display: block; }
+      .mobile-menu { display: inline-flex !important; width: 34px; height: 34px; align-items: center; justify-content: center; padding: 0; }
+      .mobile-menu svg { width: 16px; height: 16px; }
+      .module-grid { grid-template-columns: minmax(0,1fr); }
+      .visual-card { position: static; }
+      .visual-card .screen-wrap { max-width: 600px; margin: 0 auto; }
+      .visual-card .layer-panel { max-width: 600px; margin-left: auto; margin-right: auto; }
+      .visual-foot { max-width: 600px; margin-left: auto; margin-right: auto; }
+      .map-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width: 660px) {
+      main { padding: 22px 15px 50px; }
+      .topbar { min-height: 57px; padding: 9px 13px; }
+      .top-actions { gap: 5px; }
+      .topbar .progress-chip { padding: 6px 7px; font-size: 9px; }
+      .topbar .btn { min-height: 32px; padding: 6px 8px; font-size: 9px; }
+      .crumb { display: none; }
+      .home-hero { grid-template-columns: 1fr; padding: 24px 20px; }
+      .home-hero h1 { max-width: 540px; font-size: 37px; }
+      .home-hero p { font-size: 11px; }
+      .hero-side { justify-self: stretch; width: 100%; }
+      .stat-grid { grid-template-columns: repeat(2,1fr); }
+      .architecture { grid-template-columns: repeat(2,1fr); }
+      .arch-card:nth-child(2)::after { display: none; }
+      .map-grid { grid-template-columns: 1fr; }
+      .bottom-grid { grid-template-columns: 1fr; }
+      .prereq-list { grid-template-columns: 1fr; }
+      .module-header { margin-top: 1px; }
+      .module-header h1 { font-size: 29px; }
+      .lesson-card { padding: 13px; }
+      .concept-row { grid-template-columns: 1fr; }
+      .lesson-footer { flex-wrap: wrap; }
+      .lesson-footer .left-actions, .lesson-footer .right-actions { flex-wrap: wrap; }
+      .mock-body { grid-template-columns: 79px minmax(0,1fr); }
+      .mock-menu-item { padding-left: 4px; font-size: 6.5px; }
+      .mock-content { padding: 9px 7px; }
+      .mock-summary-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: white; --text: #111; --panel: white; --line: #bbb; }
+      body { color: #111; background: white; }
+      .sidebar, .topbar, .hero-actions, .lesson-footer, .toast, .screen-switch, .live-connect-card { display: none !important; }
+      .app-shell { display: block; }
+      main { max-width: none; padding: 0; }
+      .visual-card, .lesson-card, .info-card, .map-card, .arch-card { break-inside: avoid; box-shadow: none; }
+      .home-hero { color: #111; background: #eef3ec; }
+      .home-hero h1, .home-hero p { color: #111; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Course navigation">
+      <div class="brand">
+        <div class="brand-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z"/><path d="M8 10.7h8M8 13.7h8M12 4v4.3"/></svg>
+        </div>
+        <div><div class="brand-name">RouterOS CHR Lab</div><div class="brand-sub">QEMU · x86-64 · WebFig</div></div>
+      </div>
+      <div class="lab-pill"><span class="dot"></span> Guided demo · local only</div>
+      <div class="sidebar-tools">
+        <label class="search-wrap" aria-label="Search lessons">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+          <input class="search-input" id="lessonSearch" type="search" placeholder="Find a setup step…" autocomplete="off">
+        </label>
+      </div>
+      <nav class="sidebar-nav" id="sidebarNav" aria-label="All setup steps"></nav>
+      <div class="sidebar-bottom">
+        <div class="side-progress-top"><span>Lab progress</span><strong id="sideProgressText">0 / 0 complete</strong></div>
+        <div class="progress-track" aria-label="Course progress"><div class="progress-fill" id="sideProgressFill" style="width:0%"></div></div>
+        <div class="side-small">Progress is stored in this browser only. Passwords are never requested or saved here.</div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <div class="main-column">
+      <header class="topbar">
+        <div class="top-left">
+          <button class="btn ghost mobile-menu" id="mobileMenu" type="button" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+          <div class="crumb" id="breadcrumb"><strong>Overview</strong><span> / </span>Student lab</div>
+        </div>
+        <div class="top-actions">
+          <div class="progress-chip"><span>Progress</span><b id="topProgressText">0%</b></div>
+          <button class="btn ghost" id="resetProgress" type="button" title="Clear saved lesson checkmarks">Reset</button>
+        </div>
+      </header>
+      <main id="mainContent" tabindex="-1"></main>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const officialDocs = {
+      download: 'https://mikrotik.com/download',
+      chr: 'https://help.mikrotik.com/docs/exportword?pageId=18350234',
+      first: 'https://help.mikrotik.com/docs/spaces/ROS/pages/328151/First+Time+Configuration',
+      services: 'https://help.mikrotik.com/docs/spaces/ROS/pages/103841820/Services',
+      backup: 'https://help.mikrotik.com/docs/spaces/ROS/pages/328155/Configuration+Management',
+      identity: 'https://help.mikrotik.com/docs/spaces/ROS/pages/40992856/Identity'
+    };
+
+    const lessons = [
+      {
+        id: 'image', section: 'Prepare & boot', icon: '⬇', title: 'Get the official CHR image', minutes: 4,
+        layer: 'Layer 0 · Vendor image', screen: 'download', path: ['MikroTik Download', 'Cloud Hosted Router', 'QEMU / KVM'],
+        goal: 'Choose the official x86-64 Cloud Hosted Router (CHR) virtual disk. CHR is RouterOS packaged to run as a virtual machine; it is not a generic ISO installer.',
+        why: 'Starting from the vendor image keeps the lab reproducible and avoids unknown preconfigured accounts, scripts, or network exposure.',
+        steps: [
+          'Open the <strong>MikroTik download page</strong> and select the current <strong>Stable</strong> release, then find the Cloud Hosted Router (CHR) section.',
+          'For QEMU/KVM, download the <strong>qcow2</strong> image archive. The raw <code>.img</code> image also works when you set QEMU disk format to <code>raw</code>. Do not choose the RouterOS x86 ISO for this CHR disk-image workflow.',
+          'Extract the archive on your own lab host. Keep the original download and version number; do not commit the proprietary router image or license material to this repository.'
+        ],
+        verify: ['The extracted filename is a CHR image and the release version is recorded.', 'QEMU will use <code>format=qcow2</code> for a .qcow2 disk, or <code>format=raw</code> for a .img disk.', 'You downloaded it from MikroTik, not from a third-party mirror.'],
+        caution: 'CHR is MikroTik software and is subject to its license terms. This learning page contains no firmware image. Use the current official download and review CHR licensing before deploying beyond a disposable lab.',
+        links: [{ label: 'Official CHR downloads ↗', url: officialDocs.download }, { label: 'CHR system requirements ↗', url: officialDocs.chr }]
+      },
+      {
+        id: 'qemu', section: 'Prepare & boot', icon: '▣', title: 'Prepare QEMU x86-64', minutes: 6,
+        layer: 'Layer 1 · Host / hypervisor', screen: 'qemu', path: ['64-bit host', 'QEMU system emulator', 'CHR virtual disk'],
+        goal: 'Give CHR a virtual CPU, memory, disk, and one emulated Ethernet interface. The example forwards only the host loopback port 8080 to the guest WebFig HTTP port 80.',
+        why: 'QEMU user-mode networking avoids bridging the guest onto a real LAN. Binding the forwarded port to 127.0.0.1 makes this a host-only teaching endpoint instead of a service exposed to the network.',
+        steps: [
+          'Install QEMU for your host OS. On Debian/Ubuntu, the system packages are <code>qemu-system-x86</code> and <code>qemu-utils</code>. On other operating systems, use the distribution package or QEMU installer.',
+          'Put the extracted CHR image in a working folder. Change the placeholder filename and version in the command below to match the file you actually downloaded.',
+          'On Linux with KVM access, use the fast command shown. If KVM is unavailable, remove <code>-accel kvm -cpu host</code> and use <code>-accel tcg -cpu qemu64</code> instead; emulation will be slower. On macOS, select the host-supported accelerator.',
+          'Start QEMU in a terminal you can keep open. This single-NIC starter topology is for management and learning; a separate host-only LAN is needed to test a LAN client end-to-end.'
+        ],
+        commands: 'qemu-system-x86_64 \\\n  -machine q35 -accel kvm -cpu host \\\n  -m 1024M -smp 2 \\\n  -drive file=chr-<VERSION>.qcow2,if=virtio,format=qcow2 \\\n  -netdev user,id=wan0,hostfwd=tcp:127.0.0.1:8080-:80 \\\n  -device virtio-net-pci,netdev=wan0 \\\n  -nographic',
+        codeLabel: 'Linux + KVM · edit image filename/version before use',
+        verify: ['QEMU starts without a disk-format or accelerator error.', 'The guest gets one virtual Ethernet interface; it will commonly appear as <code>ether1</code>. Always confirm the actual interface name in RouterOS.', 'The host forward listens only on 127.0.0.1:8080, not on every host network interface.'],
+        caution: 'Do not change <code>127.0.0.1</code> to <code>0.0.0.0</code> for a classroom/public host. The sample uses plain HTTP for a local disposable lab only. Never expose WebFig or a default/weak account to the Internet.',
+        quiz: { question: 'What does the QEMU hostfwd entry do in this command?', options: ['Publishes the router to every device on the LAN', 'Forwards host loopback port 8080 to guest TCP port 80', 'Changes the CHR admin password'], answer: 1, explanation: 'Correct: traffic to 127.0.0.1:8080 on the QEMU host is forwarded to port 80 inside the guest.' }
+      },
+      {
+        id: 'boot', section: 'Prepare & boot', icon: '⏵', title: 'Boot CHR and inspect the console', minutes: 5,
+        layer: 'Layer 2 · RouterOS guest', screen: 'boot', path: ['QEMU console', 'RouterOS boot', 'Login prompt'],
+        goal: 'Wait for RouterOS to finish booting, identify the login prompt, and confirm the VM is responsive before moving to WebFig.',
+        why: 'The virtual machine is the actual router. WebFig is only its browser-based management service, so the guest must be running and its management service reachable first.',
+        steps: [
+          'Watch the QEMU terminal. Give the first boot a minute or two; the VM may initialize disk space and restart once depending on the image.',
+          'At the RouterOS login prompt, the initial user is usually <code>admin</code> with no password. Press Enter at the password prompt if the image asks for one. Follow any first-login prompt that explicitly asks you to set a new password.',
+          'If the console is blank, check QEMU serial/console settings and confirm that the virtual disk image is the CHR image. Do not repeatedly reset the disk just because boot takes a short while.'
+        ],
+        commands: '/system resource print\n/system package print\n/ip dhcp-client print detail',
+        codeLabel: 'Optional console checks · these do not change configuration',
+        verify: ['The RouterOS prompt appears and accepts a login.', 'The resource output reports RouterOS/CHR and expected virtual CPU/memory.', 'For user-mode networking, inspect whether a DHCP client is present and bound on the WAN interface; do not assume a particular interface name without checking.'],
+        caution: 'A first-login empty password is not acceptable after setup. Change it before leaving the VM running or opening management access.',
+        quiz: { question: 'Which statement best describes CHR?', options: ['A virtual-machine edition of RouterOS for x86-64', 'A WebFig browser extension', 'A QEMU network adapter'], answer: 0, explanation: 'Correct: CHR is MikroTik RouterOS built for virtual-machine deployment.' }
+      },
+      {
+        id: 'password', section: 'Secure & connect', icon: '⌑', title: 'Set the admin password', minutes: 4,
+        layer: 'Layer 3 · RouterOS identity', screen: 'password', path: ['RouterOS console', 'User admin', 'Password rotation'],
+        goal: 'Replace the empty first-login password with a strong, unique secret before connecting through WebFig.',
+        why: 'An empty or shared administrator password turns an otherwise isolated VM into an easy takeover target. A password belongs in your password manager—not in a screenshot, transcript, HTML file, or chat.',
+        steps: [
+          'If the first-login wizard prompts you to set a password, set it there and confirm it. Otherwise, at the RouterOS console run <code>/password</code>.',
+          'When asked for the old password, press Enter if the existing password is blank. Enter a strong, unique password twice when prompted. The prompt should mask the characters.',
+          'Keep the new password in a trusted password manager. This page does not collect, transmit, display, or store any password. Do not type your real router password into a demo field.'
+        ],
+        commands: '/password\nold password: [press Enter if blank]\nnew password: [enter a unique secret]\nconfirm new password: [repeat the secret]',
+        codeLabel: 'Expected interactive prompts · placeholders only',
+        verify: ['Log out or start a second session and authenticate with the new password.', 'Confirm the account still has the intended permissions in <strong>System → Users</strong>.', 'Do not disable or delete the default admin account until another administrator has been tested.'],
+        caution: 'Password changes are not recoverable from this HTML. If the password is lost, use a planned recovery/reset process for the disposable lab. Never place a real password in a command copied from a tutorial.'
+      },
+      {
+        id: 'webfig', section: 'Secure & connect', icon: '▤', title: 'Open WebFig', minutes: 4,
+        layer: 'Layer 4 · Browser management', screen: 'login', path: ['Host browser', '127.0.0.1:8080', 'RouterOS WebFig'],
+        goal: 'Reach the real router’s WebFig through the local QEMU port forward. The browser is on the QEMU host; QEMU forwards the connection into CHR.',
+        why: 'The QEMU guest may receive an address on a private emulated subnet, not 192.168.88.1. With the sample launch command, the reliable browser URL is the host loopback forward.',
+        steps: [
+          'With QEMU still running, open <code>http://127.0.0.1:8080</code> on the same host that launched QEMU. If you used another host port, replace 8080 with it.',
+          'Sign in as <code>admin</code> and use the password you just set. If the page does not load, check that QEMU includes the port forward, RouterOS <code>www</code> service is enabled, and the guest has finished booting.',
+          'This course has a separate illustrative WebFig panel so students can explore the click-paths offline. The panel does not connect to a router. Use the box below only to open a real router URL in a new tab; credentials are entered directly in the router page.'
+        ],
+        commands: '/ip service print detail\n# Only if www is disabled and you are using the host-local QEMU forward:\n/ip service set www disabled=no port=80',
+        codeLabel: 'Console fallback · enable HTTP only for the loopback-bound local lab',
+        verify: ['The browser shows the RouterOS login page, then the real WebFig dashboard after authentication.', 'In RouterOS, <strong>IP → Services</strong> lists the <code>www</code> service on port 80 if using the sample HTTP forward.', 'A failed page load is not proof the router is down: inspect the QEMU process, port number, service status, firewall, and guest address.'],
+        caution: 'The sample uses HTTP because it is bound to host loopback for an isolated demo. HTTP does not encrypt credentials. Do not use this setup on an untrusted/shared network; use HTTPS with a trusted certificate and restrict the management source network.',
+        quiz: { question: 'Where does the sample URL http://127.0.0.1:8080 point?', options: ['Directly to the physical MikroTik factory address', 'To the QEMU host loopback port that forwards to the guest', 'To a public WebFig website'], answer: 1, explanation: 'Correct: QEMU forwards local host port 8080 to the CHR guest TCP port 80.' }
+      },
+      {
+        id: 'identity', section: 'Build the starter router', icon: '⌂', title: 'Set identity and clock', minutes: 4,
+        layer: 'Layer 5 · System settings', screen: 'identity', path: ['System', 'Identity / Clock', 'Apply'],
+        goal: 'Give the router a recognizable identity and set its time zone/time settings so logs and screenshots have useful context.',
+        why: 'A clear identity prevents confusion when several routers are open. Correct time makes event ordering, certificates, leases, and troubleshooting far easier.',
+        steps: [
+          'In WebFig, open <strong>System → Identity</strong> and choose a short lab name such as <code>CHR-STUDENT-01</code>. Avoid spaces for portability.',
+          'Open <strong>System → Clock</strong>, set the correct time zone, then verify the device time. If the lab has upstream access, configure the RouterOS NTP client using the appropriate servers for your environment.',
+          'Apply one change at a time and confirm the identity shown in the top bar or in the console prompt.'
+        ],
+        commands: '/system identity set name=CHR-STUDENT-01\n/system identity print\n/system clock print',
+        codeLabel: 'Equivalent console checks · change the example identity as needed',
+        verify: ['WebFig title/prompt shows the new identity.', 'Router date, time, and time zone make sense for the host.', 'System logs are easier to distinguish from another VM.'],
+        caution: 'The identity is a label, not a security boundary. Do not use a password or personal data as the router identity.'
+      },
+      {
+        id: 'interfaces', section: 'Build the starter router', icon: '⇄', title: 'Map the virtual interfaces', minutes: 5,
+        layer: 'Layer 6 · Link / interface', screen: 'interfaces', path: ['Interfaces', 'Ethernet', 'Identify WAN / LAN'],
+        goal: 'Record which RouterOS interface is connected to each QEMU network. This guide uses ether1 as WAN and ether2 as an optional LAN interface.',
+        why: 'A correct interface map is the foundation for DHCP, address assignment, NAT, and firewall rules. Interface numbering can change when virtual hardware changes.',
+        steps: [
+          'Open <strong>Interfaces</strong> in WebFig and inspect names, MAC addresses, link/running flags, and traffic counters.',
+          'For the one-NIC QEMU example, treat the single attached interface (commonly <code>ether1</code>) as the WAN/uplink. There is no client LAN to test yet.',
+          'For a full two-sided router lab, attach another virtual NIC and connect it to a private host-only/TAP network. Confirm the new RouterOS interface before using the <code>ether2</code> examples in later lessons.',
+          'Write down the map. Do not add a LAN bridge until a separate LAN interface or correctly designed virtual switch exists.'
+        ],
+        verify: ['The WAN interface has a running/link indicator and traffic counters respond.', 'If you added a LAN NIC, it appears separately and is not accidentally the WAN.', 'The interface map is recorded before adding firewall or NAT rules.'],
+        caution: 'A second QEMU user-mode NIC is not automatically a useful LAN bridge for a host client. Use a host-only network/TAP/bridge topology when you need to test DHCP and client forwarding end-to-end.'
+      },
+      {
+        id: 'wan', section: 'Build the starter router', icon: '↗', title: 'Configure the WAN DHCP client', minutes: 5,
+        layer: 'Layer 7 · WAN IPv4', screen: 'dhcp', path: ['IP', 'DHCP Client', 'WAN interface'],
+        goal: 'Use the QEMU user-mode DHCP service to assign an upstream address to the WAN interface, if a client is not already configured.',
+        why: 'QEMU user networking provides a private virtual uplink with DHCP. RouterOS needs an address and a default route before it can reach outside networks.',
+        steps: [
+          'Open <strong>IP → DHCP Client</strong>. Inspect existing rows first; a fresh CHR image or a supplied configuration may already have a DHCP client on the first interface.',
+          'If there is no client on the WAN, add one for the verified WAN interface (commonly <code>ether1</code>), keep <strong>Add Default Route</strong> enabled for this lab, and apply.',
+          'Wait for <strong>bound</strong>. Inspect the leased address, gateway, DNS options, and default route. Do not add a duplicate client just to make a row appear.'
+        ],
+        commands: '/ip dhcp-client print detail\n# Only if no WAN client exists, add one on the verified WAN interface:\n/ip dhcp-client add interface=ether1 add-default-route=yes use-peer-dns=yes disabled=no',
+        codeLabel: 'Inspect first; run the add command only if needed',
+        verify: ['DHCP client status is <code>bound</code> on WAN.', 'A dynamic address and default route are present.', 'There is exactly one appropriate DHCP client on the WAN interface.'],
+        caution: 'Never copy the example interface name blindly. An incorrect WAN/LAN mapping can leak traffic or strand your management session.'
+      },
+      {
+        id: 'bridge', section: 'Build the starter router', icon: '⤢', title: 'Create the LAN bridge and gateway', minutes: 7,
+        layer: 'Layer 8 · LAN link + IPv4', screen: 'address', path: ['Bridge', 'Ports', 'IP → Addresses'],
+        goal: 'Join one or more LAN-facing Ethernet ports into a bridge and assign a gateway address to that bridge.',
+        why: 'A bridge represents the LAN switching domain. Putting the gateway IP on the bridge makes it available to every member port rather than tying it to one physical/virtual member.',
+        steps: [
+          'Use this section only after you have identified a LAN-side interface. The tutorial example is <code>ether2</code>; add a second NIC/host-only network first if it is missing.',
+          'Open <strong>Bridge</strong> and create <code>bridge-lan</code>. In <strong>Bridge → Ports</strong>, add the verified LAN interface (example <code>ether2</code>) to that bridge.',
+          'Open <strong>IP → Addresses</strong> and add <code>192.168.88.1/24</code> to <code>bridge-lan</code>. Keep the WAN and LAN subnets different.',
+          'Before applying, look for an existing bridge, port membership, or duplicate address. On a preconfigured router, adapt rather than recreate the example.'
+        ],
+        commands: '/interface bridge add name=bridge-lan comment="Student lab LAN"\n/interface bridge port add bridge=bridge-lan interface=ether2\n/ip address add address=192.168.88.1/24 interface=bridge-lan comment="LAN gateway"',
+        codeLabel: 'Fresh-lab example · assumes ether2 exists and the objects do not already exist',
+        verify: ['<code>bridge-lan</code> is running and the expected LAN interface is a member.', 'The address list shows <code>192.168.88.1/24</code> on the bridge, not on the WAN.', 'No client/gateway subnet overlaps the WAN lease subnet.'],
+        caution: 'These add commands are not idempotent. Inspect existing configuration first. If you paste them twice, duplicate objects or errors may result.'
+      },
+      {
+        id: 'dhcpserver', section: 'Build the starter router', icon: '⌁', title: 'Serve DHCP on the LAN', minutes: 7,
+        layer: 'Layer 9 · LAN addressing', screen: 'dhcpserver', path: ['IP', 'Pool', 'DHCP Server / Networks'],
+        goal: 'Offer LAN clients an address, gateway, and DNS resolver from a pool that does not include the router’s own address.',
+        why: 'A client joining the LAN should receive a unique address in the LAN subnet and the bridge address as its default gateway.',
+        steps: [
+          'Open <strong>IP → Pool</strong> and create a pool such as <code>192.168.88.10–192.168.88.254</code>. Keep <code>192.168.88.1</code> reserved for the router.',
+          'Under <strong>IP → DHCP Server</strong>, run the setup wizard or add a server bound to <code>bridge-lan</code> using that pool. Confirm the server is enabled.',
+          'Under <strong>IP → DHCP Server → Networks</strong>, set network <code>192.168.88.0/24</code>, gateway <code>192.168.88.1</code>, and DNS <code>192.168.88.1</code>.',
+          'Connect a client VM to the LAN host-only network to test this. A client attached only to QEMU user-mode networking is not the same as a client behind this router.'
+        ],
+        commands: '/ip pool add name=pool-lan ranges=192.168.88.10-192.168.88.254\n/ip dhcp-server add name=dhcp-lan interface=bridge-lan address-pool=pool-lan lease-time=12h disabled=no\n/ip dhcp-server network add address=192.168.88.0/24 gateway=192.168.88.1 dns-server=192.168.88.1',
+        codeLabel: 'Fresh-lab example · a DHCP client on the LAN is needed for an end-to-end test',
+        verify: ['DHCP server is enabled and bound to <code>bridge-lan</code>.', 'The network entry matches the bridge subnet and advertises the correct gateway.', 'A real LAN-side test client obtains an address from the intended pool.'],
+        caution: 'Do not run two DHCP servers on the same LAN segment. The configured pool must not overlap statically assigned addresses.'
+      },
+      {
+        id: 'dns', section: 'Build the starter router', icon: '⌕', title: 'Configure DNS for LAN clients', minutes: 5,
+        layer: 'Layer 10 · Name resolution', screen: 'dns', path: ['IP', 'DNS', 'Settings'],
+        goal: 'Let LAN clients use the router as a DNS cache/forwarder, while the router uses approved upstream resolvers.',
+        why: 'DHCP may hand out working addresses and a gateway, but domain names still fail unless a resolver is reachable and allowed to answer LAN clients.',
+        steps: [
+          'Open <strong>IP → DNS</strong>. Inspect dynamic servers learned through the WAN DHCP lease or enter resolvers approved for your lab.',
+          'Enable <strong>Allow Remote Requests</strong> only when this router is intended to serve DNS to its private LAN clients.',
+          'Confirm the DHCP network entry from the previous lesson advertises <code>192.168.88.1</code> as its DNS server.',
+          'Keep DNS service away from public/untrusted interfaces with service restrictions and firewall rules.'
+        ],
+        commands: '/ip dns print\n/ip dns set allow-remote-requests=yes',
+        codeLabel: 'Enable recursive requests only for a protected lab LAN',
+        verify: ['The router lists usable upstream DNS servers.', 'A LAN client can resolve a test name through <code>192.168.88.1</code>.', 'The DNS listener is not exposed to untrusted/public networks.'],
+        caution: 'An open recursive DNS resolver can be abused. Do not enable remote requests on an Internet-facing router without restricting who may query it.'
+      },
+      {
+        id: 'nat', section: 'Build the starter router', icon: '⇢', title: 'Add outbound NAT', minutes: 5,
+        layer: 'Layer 11 · IPv4 translation', screen: 'nat', path: ['IP', 'Firewall', 'NAT'],
+        goal: 'Masquerade traffic from the private LAN as it exits the WAN, so clients can share the upstream address in this small lab.',
+        why: 'The LAN uses private IPv4 addresses. Source NAT rewrites outbound packets to the router’s WAN address and tracks replies.',
+        steps: [
+          'Open <strong>IP → Firewall → NAT</strong> and inspect existing rules before adding one. A default configuration may already have a masquerade rule.',
+          'For the example topology, add a <code>srcnat</code> rule with action <code>masquerade</code> and the verified WAN interface as <code>out-interface</code>.',
+          'Keep the rule above any conflicting catch-all rules. NAT is not a firewall; filter rules still decide what traffic is allowed.',
+          'Test from a LAN-side client after routing and firewall rules are in place. The one-NIC starter VM has no LAN client, so its NAT screen is instructional only.'
+        ],
+        commands: '/ip firewall nat add chain=srcnat action=masquerade out-interface=ether1 comment="Student lab: LAN to WAN"',
+        codeLabel: 'Fresh-lab example · replace ether1 if your WAN interface differs',
+        verify: ['The rule is enabled, matches <code>srcnat</code>, and counters increase during a LAN client test.', 'The outbound interface is the actual WAN.', 'There is not a duplicate masquerade rule doing the same job.'],
+        caution: 'Do not mistake NAT for access control. It does not, by itself, secure the router management plane or replace a firewall.'
+      },
+      {
+        id: 'firewall', section: 'Secure & operate', icon: '⛨', title: 'Build a careful starter firewall', minutes: 9,
+        layer: 'Layer 12 · RouterOS packet filter', screen: 'firewall', path: ['IP', 'Firewall', 'Filter Rules'],
+        goal: 'Understand the input chain (traffic to the router) and forward chain (traffic through the router), then add protections without locking out the lab.',
+        why: 'A router has two security surfaces: its own management services and packets routed between networks. Rules are evaluated in order, so a misplaced drop can block WebFig or all client traffic.',
+        steps: [
+          'Before changing rules, open a second WebFig/console session and use <strong>Safe Mode</strong> for remote edits when available. Export/backup the current config first.',
+          'In <strong>IP → Firewall → Filter Rules</strong>, inspect rule order and counters. A supplied/default firewall may already contain a complete rule set; do not append a duplicate template blindly.',
+          'For a fresh isolated lab, design the input chain in this order: accept established/related; drop invalid; allow required management from the trusted lab path; allow LAN router services; allow ICMP if desired; drop other WAN input.',
+          'Design the forward chain separately: accept established/related; drop invalid; allow intended LAN-to-WAN traffic; reject unsolicited WAN-to-LAN traffic. Keep the WebFig exception before the WAN drop.',
+          'In the sample QEMU topology, WebFig is forwarded into the guest through WAN ether1. If you add a WAN input drop, explicitly preserve the local lab WebFig path or you can lock yourself out.'
+        ],
+        commands: '# Planning sketch only — review existing rules and adapt before applying.\n# The hostfwd WebFig exception must precede a WAN input drop.\n/ip firewall filter print\n/ip firewall filter print stats',
+        codeLabel: 'Read-only checks · no generic drop-rule paste in this lesson',
+        verify: ['Existing rules are understood and ordered before a new rule is added.', 'A fresh WebFig session still works after changes.', 'An intended LAN client can reach the WAN, while unsolicited WAN-to-router/ LAN traffic is denied.'],
+        caution: 'Firewall lockouts are easy to cause. Use Safe Mode, keep a console session available, add explicit allow rules before drops, and test from a second session. This page deliberately avoids pretending one filter template fits every RouterOS version/topology.',
+        quiz: { question: 'Which chain handles packets destined for the router itself, including a WebFig login?', options: ['input', 'forward', 'srcnat'], answer: 0, explanation: 'Correct: input filters packets addressed to the router. Forward filters packets routed through it.' }
+      },
+      {
+        id: 'services', section: 'Secure & operate', icon: '⚙', title: 'Restrict management services', minutes: 6,
+        layer: 'Layer 13 · RouterOS services', screen: 'services', path: ['IP', 'Services', 'www / www-ssl'],
+        goal: 'Know which service provides WebFig and reduce management exposure to only the services and source networks you actually need.',
+        why: 'RouterOS exposes multiple management services. Reducing listeners and restricting source addresses narrows the attack surface.',
+        steps: [
+          'Open <strong>IP → Services</strong>. In the service list, <code>www</code> is WebFig over HTTP and <code>www-ssl</code> is WebFig over HTTPS; the usual ports are 80 and 443.',
+          'For this local QEMU-only demo, keep the HTTP service reachable only through the loopback-bound port forward. HTTP does not encrypt the browser session.',
+          'For a real network, configure a certificate for HTTPS, enable <code>www-ssl</code>, restrict its allowed source addresses to a management subnet/VPN, then disable plain HTTP if no longer needed.',
+          'Disable unused legacy services, and verify the input firewall permits only the required management source and port.'
+        ],
+        commands: '/ip service print detail\n# Review before making changes; example: disable an unused service only after confirming it is not needed.\n/ip service set telnet disabled=yes',
+        codeLabel: 'Inspect services first · do not disable access you are using',
+        verify: ['WebFig uses the intended service and port.', 'Unused services are disabled.', 'Allowed source addresses and firewall rules match the management network.'],
+        caution: 'A service address restriction and a firewall are complementary protections. A custom port is not a substitute for HTTPS or source-network restrictions.',
+        links: [{ label: 'RouterOS IP Services reference ↗', url: officialDocs.services }]
+      },
+      {
+        id: 'users', section: 'Secure & operate', icon: '♙', title: 'Add a named administrator', minutes: 6,
+        layer: 'Layer 14 · Accounts / permissions', screen: 'users', path: ['System', 'Users', 'Groups / Policies'],
+        goal: 'Use a named account for routine work and verify least-privilege options before disabling the built-in admin account.',
+        why: 'Named accounts create accountability. Limited user groups reduce the impact of a compromised student or monitoring login.',
+        steps: [
+          'Open <strong>System → Users</strong> and review available groups and policies. Choose a full administrator only for a trusted lab administrator.',
+          'Create a unique named user with a strong password. For students who only need observation, make a read-only group instead of granting full access.',
+          'Open a separate session and verify the new account works before disabling the default <code>admin</code>. Keep a recovery path until the new login is proven.',
+          'Do not copy a literal example password from a page or leave an empty password on any account.'
+        ],
+        commands: '# Replace the placeholder locally; do not paste a real secret into this HTML.\n/user add name=student-admin group=full password="REPLACE_WITH_A_UNIQUE_SECRET"\n/user print',
+        codeLabel: 'Illustrative command · replace the password placeholder privately',
+        verify: ['The named account can log in with the intended group.', 'A student/read-only account does not have write or policy-management rights.', 'The default admin is disabled only after a tested recovery account exists.'],
+        caution: 'This page never asks for or stores account passwords. If you use the CLI example, replace the placeholder directly in the private RouterOS session and never save the edited command in a shared file.'
+      },
+      {
+        id: 'backup', section: 'Secure & operate', icon: '▣', title: 'Save a backup and export', minutes: 5,
+        layer: 'Layer 15 · Recovery', screen: 'backup', path: ['Files', 'Backup', 'Export configuration'],
+        goal: 'Save a point-in-time recovery copy before experiments and understand the difference between a binary backup and a text export.',
+        why: 'A backup can restore a lab quickly. Binary backups are best for the same router/version; exports are easier to inspect and selectively reuse but do not contain every secret or subsystem.',
+        steps: [
+          'In WebFig, use <strong>Files → Backup</strong> and give the file a meaningful name. For a real router, encrypt the binary backup and store it securely.',
+          'Also create a configuration export from the RouterOS console when you need a human-readable change record. Keep the export private; it can reveal network design and configuration details.',
+          'Download backups off the router and test recovery only in a disposable clone. Do not attach a real backup to a public repository or this tutorial.',
+          'Take a new backup after each major milestone: credentials, LAN/DHCP, firewall, and final verification.'
+        ],
+        commands: '# Save a binary backup through Files → Backup and set an encryption password.\n/export file=lab-config',
+        codeLabel: 'Text export example · encrypt the binary backup in WebFig',
+        verify: ['The file list shows the new backup/export.', 'A binary backup is protected and stored away from the router.', 'You know which RouterOS version the backup came from.'],
+        caution: 'Backups may contain sensitive router configuration. Treat them as secrets, encrypt them, and do not include them in Git.',
+        links: [{ label: 'Configuration backup / export guide ↗', url: officialDocs.backup }]
+      },
+      {
+        id: 'verify', section: 'Secure & operate', icon: '✓', title: 'Verify each network layer', minutes: 7,
+        layer: 'Layer 16 · Test & evidence', screen: 'verify', path: ['Interfaces', 'IP status', 'Client tests'],
+        goal: 'Prove each layer separately instead of using “the Internet works” as the only test.',
+        why: 'Layer-by-layer tests identify whether a failure is link, address, route, DNS, NAT, firewall, or client configuration.',
+        steps: [
+          'Check link state and counters in <strong>Interfaces</strong>. Confirm the WAN DHCP client is bound and the router has a default route.',
+          'From the RouterOS tools, ping the upstream gateway, then a numeric Internet address. If the numeric ping works, test a DNS name separately.',
+          'From a client attached to the lab LAN, renew DHCP, verify its address/gateway/DNS, then test gateway reachability, a numeric address, and a DNS name.',
+          'If this is still the one-NIC QEMU demo, mark LAN-client checks as not applicable until you attach a real host-only/TAP client. Record observed results, not expected results.'
+        ],
+        commands: '/interface print stats\n/ip dhcp-client print detail\n/ip route print where dst-address=0.0.0.0/0\n/tool ping 1.1.1.1 count=4\n/tool ping help.mikrotik.com count=4',
+        codeLabel: 'Run one test at a time · Internet ICMP/DNS policy varies',
+        verify: ['WAN link → DHCP lease → default route are checked in that order.', 'Numeric IP and DNS-name tests are recorded separately.', 'A LAN-side client has the expected lease and can reach its gateway.'],
+        caution: 'Some upstream networks block ICMP, and a failed ping alone does not prove routing is broken. Compare routes, DNS resolution, and application-level access.'
+      },
+      {
+        id: 'troubleshoot', section: 'Secure & operate', icon: '⌕', title: 'Troubleshoot common failures', minutes: 8,
+        layer: 'Layer 17 · Diagnostics', screen: 'troubleshoot', path: ['Status', 'Logs', 'One change at a time'],
+        goal: 'Use symptoms and narrow checks to isolate the failing layer without resetting a working lab unnecessarily.',
+        why: 'Changing multiple settings at once hides cause and effect. A short repeatable checklist makes the result teachable and easier to reverse.',
+        steps: [
+          '<strong>WebFig page does not load:</strong> confirm QEMU is running; compare the host port with the command; check <code>IP → Services → www</code>; then check the guest firewall/input chain and host port conflict.',
+          '<strong>Login rejected:</strong> check username/caps-lock, confirm the password was set in the actual guest, and use the QEMU console for recovery. This demo cannot reset a real password.',
+          '<strong>WAN is not bound:</strong> verify which NIC is WAN, inspect the DHCP client, check QEMU user networking, and inspect routes. Avoid adding a second DHCP client blindly.',
+          '<strong>LAN client has no lease:</strong> confirm it is connected to the intended host-only LAN, bridge member/port state, server bound to the bridge, pool, and DHCP network entry.',
+          '<strong>Address works but name fails:</strong> test numeric reachability, upstream DNS, the router’s DNS setting, remote requests, and the client’s DNS lease option.'
+        ],
+        verify: ['Every diagnosis starts with a specific observed symptom.', 'Only one configuration change is made before retesting.', 'Use the console or a saved config to recover rather than turning off every security control.'],
+        caution: 'Do not post public screenshots or exports that reveal public IPs, usernames, serial numbers, or other identifying configuration. Redact sensitive information before sharing.'
+      },
+      {
+        id: 'shutdown', section: 'Secure & operate', icon: '⏻', title: 'Shut down or reset the lab safely', minutes: 4,
+        layer: 'Layer 18 · Lab lifecycle', screen: 'shutdown', path: ['RouterOS shutdown', 'QEMU process', 'Snapshot / reset'],
+        goal: 'Shut down RouterOS cleanly, preserve any required work, and know how to return to a clean demo state.',
+        why: 'A graceful shutdown reduces the chance of disk-image corruption. A disposable snapshot lets a class repeat the same lesson.',
+        steps: [
+          'Save/export the configuration you need and securely store any backup. Confirm that no RouterOS package update or write operation is in progress.',
+          'Use <strong>System → Shutdown</strong> in WebFig or run <code>/system shutdown</code> at the RouterOS console, then wait for QEMU to finish.',
+          'Close QEMU only after the guest has stopped. To reset a lab, restore a known clean copy/snapshot of the CHR disk; a router reset can erase configuration.',
+          'Do not include generated disk images, backups, or private credentials in the repository. Only this single HTML teaching artifact belongs here.'
+        ],
+        commands: '/system shutdown',
+        codeLabel: 'Graceful guest shutdown',
+        verify: ['RouterOS reports shutdown and the QEMU process exits cleanly.', 'Your desired backup is stored securely outside the repo.', 'A clean snapshot is available if students need to repeat the lab.'],
+        caution: 'Do not kill the QEMU process during a write/update if a graceful shutdown is possible. Be certain before resetting or replacing the only copy of a lab disk.'
+      },
+      {
+        id: 'nextlabs', section: 'Continue learning', icon: '＋', title: 'Next labs: Safe Mode, VLANs, VPN & IPv6', minutes: 10,
+        layer: 'Layer 19 · Extend the topology', screen: 'nextlabs', path: ['Clone the VM', 'Add one feature', 'Test and document'],
+        goal: 'Extend this starter lab with one advanced feature at a time. The lessons below are a syllabus, not preconfigured production templates.',
+        why: 'VLANs, routing, VPN, IPv6, queues, and wireless depend on the topology and trust boundaries. Building them in isolated clones prevents a classroom exercise from affecting the host network.',
+        steps: [
+          '<strong>Safe Mode:</strong> practice reversible remote changes and confirm rollback by intentionally losing a test session on a clone.',
+          '<strong>VLANs:</strong> add a managed virtual switch/client that carries tagged traffic; document access vs trunk ports and the router’s VLAN-aware bridge settings.',
+          '<strong>Static routing / OSPF:</strong> add a second router and a separate subnet; test route selection and failure behavior.',
+          '<strong>WireGuard / IPv6 / queues:</strong> use current MikroTik documentation, clone your baseline, and test keys, firewall policy, addressing, MTU, and rate limits in an isolated topology.',
+          'For each extension, save a clean baseline, state the expected packet path, apply one change, verify from both ends, and record rollback steps.'
+        ],
+        verify: ['The baseline starter lab remains recoverable.', 'One new feature is tested in an isolated topology.', 'A documentation page for the exact RouterOS version is consulted before configuration.'],
+        caution: 'There is no single “all RouterOS” setup. This one-file course covers a complete safe starter-router workflow; advanced feature configurations depend on the lab design and RouterOS release.'
+      }
+    ];
+
+    const screenPages = {
+      identity: { menu: 'System', trail: 'System  ›  Identity', title: 'Identity', tabs: ['Identity', 'Notes'], rows: [['Name', 'CHR-STUDENT-01'], ['Architecture', 'x86_64'], ['Version', 'RouterOS 7.x · illustrative'], ['Uptime', '00:18:42']], note: 'Example only · values are not read from a running router.' },
+      interfaces: { menu: 'Interfaces', trail: 'Interfaces  ›  Ethernet', title: 'Interface List', tabs: ['Interface', 'Ethernet', 'Interface List'], table: [['R', 'ether1', 'WAN / QEMU user-net', 'running'], ['', 'ether2', 'optional LAN NIC', 'not attached']], headings: ['FLAG', 'NAME', 'COMMENT', 'LINK'], note: 'Confirm actual names, MACs, and link state in your own VM.' },
+      dhcp: { menu: 'DHCP Client', trail: 'IP  ›  DHCP Client', title: 'DHCP Client', tabs: ['DHCP Client', 'Leases'], table: [['D', 'ether1', 'bound', '10.0.2.15/24'], ['', 'ether2', 'not configured', '—']], headings: ['FLAG', 'INTERFACE', 'STATUS', 'ADDRESS'], note: 'The example lease is illustrative; your QEMU/network setup can differ.' },
+      address: { menu: 'Addresses', trail: 'IP  ›  Addresses', title: 'IP Addresses', tabs: ['Addresses', 'Pools', 'Neighbors'], table: [['', '192.168.88.1/24', 'bridge-lan', 'LAN gateway'], ['D', '10.0.2.15/24', 'ether1', 'QEMU DHCP · example']], headings: ['FLAG', 'ADDRESS', 'INTERFACE', 'COMMENT'], note: 'Example address plan · avoid subnet overlap.' },
+      dhcpserver: { menu: 'DHCP Server', trail: 'IP  ›  DHCP Server', title: 'DHCP Server', tabs: ['DHCP', 'Networks', 'Leases'], table: [['R', 'dhcp-lan', 'bridge-lan', 'pool-lan'], ['', 'pool-lan', '192.168.88.10–254', '192.168.88.0/24']], headings: ['FLAG', 'NAME', 'INTERFACE / RANGE', 'NETWORK'], note: 'A LAN client is required for a real lease test.' },
+      dns: { menu: 'DNS', trail: 'IP  ›  DNS', title: 'DNS Settings', tabs: ['Servers', 'Static', 'Cache'], rows: [['Upstream servers', 'learned from WAN DHCP or approved resolvers'], ['Allow Remote Requests', 'Yes · protected lab LAN only'], ['Cache size', '2048 KiB · example'], ['DHCP option', '192.168.88.1']], note: 'Never expose an open recursive resolver to the public Internet.' },
+      nat: { menu: 'Firewall', trail: 'IP  ›  Firewall  ›  NAT', title: 'NAT Rules', tabs: ['Filter Rules', 'NAT', 'Mangle', 'Raw'], table: [['', 'srcnat', 'masquerade', 'out: ether1', 'LAN → WAN'], ['', '—', 'existing rules first', '—', 'inspect before adding']], headings: ['FLAG', 'CHAIN', 'ACTION', 'MATCH', 'COMMENT'], note: 'NAT is not a firewall. Review rule order/counters.' },
+      firewall: { menu: 'Firewall', trail: 'IP  ›  Firewall  ›  Filter Rules', title: 'Filter Rules', tabs: ['Filter Rules', 'NAT', 'Mangle', 'Raw'], table: [['', 'input', 'accept', 'established, related', 'keep sessions'], ['', 'input', 'accept', 'lab WebFig / LAN mgmt', 'before WAN drop'], ['', 'input', 'drop', 'other WAN input', 'default deny'], ['', 'forward', 'accept', 'LAN → WAN', 'intended transit']], headings: ['FLAG', 'CHAIN', 'ACTION', 'MATCH', 'PURPOSE'], note: 'Illustrative order only · adapt and use Safe Mode.' },
+      services: { menu: 'Services', trail: 'IP  ›  Services', title: 'Service List', tabs: ['Services'], table: [['', 'www', '80', 'WebFig HTTP · local lab'], ['X', 'www-ssl', '443', 'HTTPS · certificate required'], ['X', 'telnet', '23', 'disable when unused'], ['', 'winbox', '8291', 'restrict to management']], headings: ['FLAG', 'NAME', 'PORT', 'COMMENT'], note: 'www = HTTP, www-ssl = HTTPS. Example status is not live.' },
+      users: { menu: 'System', trail: 'System  ›  Users', title: 'User List', tabs: ['Users', 'Groups', 'Active Users'], table: [['A', 'admin', 'full', 'set strong password'], ['', 'student-admin', 'full', 'named lab admin'], ['', 'student-read', 'read', 'observe only']], headings: ['FLAG', 'NAME', 'GROUP', 'NOTE'], note: 'Do not disable admin until a separate login has been tested.' },
+      backup: { menu: 'Files', trail: 'Files  ›  Backup', title: 'Files', tabs: ['Files', 'Backup'], table: [['', 'before-next-change.backup', 'binary backup', 'encrypt + protect'], ['', 'lab-config.rsc', 'text export', 'review before sharing']], headings: ['FLAG', 'NAME', 'TYPE', 'HANDLING'], note: 'Backups and exports can contain sensitive network information.' },
+      verify: { menu: 'IP', trail: 'IP  ›  Routes / Tools', title: 'Verification checklist', tabs: ['Addresses', 'Routes', 'DHCP Client'], rows: [['1 · Link', 'WAN interface is running'], ['2 · Address', 'DHCP client is bound'], ['3 · Route', 'default route is present'], ['4 · DNS', 'numeric IP and hostname tested separately']], note: 'Check one layer at a time.' },
+      troubleshoot: { menu: 'Tools', trail: 'Log  ›  Tools  ›  Ping', title: 'Diagnostics', tabs: ['Log', 'Ping', 'Traceroute'], rows: [['WebFig', 'Host port · www service · input firewall'], ['WAN', 'Link · DHCP lease · default route'], ['LAN', 'Bridge member · DHCP server · pool'], ['DNS', 'Resolver · remote requests · client lease']], note: 'Change one thing, then run the same test again.' },
+      nextlabs: { menu: 'Routing', trail: 'Learning path  ›  Advanced', title: 'Advanced lab queue', tabs: ['Safe Mode', 'VLAN', 'Routing', 'VPN'], rows: [['Safe Mode', 'practice rollback'], ['VLAN / bridge', 'tagged client topology'], ['Routing', 'second router + route tests'], ['WireGuard / IPv6', 'isolated clone + current docs']], note: 'Advanced settings depend on topology and release.' }
+    };
+
+    const menuList = [
+      { group: 'Favorites', items: ['Quick Set', 'Interfaces', 'Bridge', 'IP', 'Routing', 'System', 'Files', 'Log', 'Tools'] },
+      { group: 'IP submenus', items: ['Addresses', 'DHCP Client', 'DHCP Server', 'DNS', 'Firewall', 'Services'] }
+    ];
+
+    let activeId = 'overview';
+    let filterText = '';
+    let liveUrl = 'http://127.0.0.1:8080';
+    let toastTimer = null;
+    let completed = new Set();
+    try { completed = new Set(JSON.parse(localStorage.getItem('chr-qemu-lab-progress-v1') || '[]')); } catch (_) { completed = new Set(); }
+
+    const mainContent = document.getElementById('mainContent');
+    const navRoot = document.getElementById('sidebarNav');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    const lessonSearch = document.getElementById('lessonSearch');
+
+    function esc(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+    function saveProgress() {
+      try { localStorage.setItem('chr-qemu-lab-progress-v1', JSON.stringify([...completed])); } catch (_) { /* Local storage may be disabled. */ }
+    }
+    function doneCount() { return lessons.filter((lesson) => completed.has(lesson.id)).length; }
+    function currentIndex() { return lessons.findIndex((lesson) => lesson.id === activeId); }
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2900);
+    }
+    function renderNav() {
+      const query = filterText.trim().toLowerCase();
+      const visible = lessons.filter((lesson) => !query || `${lesson.title} ${lesson.section} ${lesson.layer} ${lesson.path.join(' ')}`.toLowerCase().includes(query));
+      const groups = [...new Set(visible.map((lesson) => lesson.section))];
+      let html = '<button class="nav-item ' + (activeId === 'overview' ? 'active' : '') + '" type="button" data-overview><span class="nav-icon">⌂</span><span class="nav-text">Course overview</span></button>';
+      for (const group of groups) {
+        const items = visible.filter((lesson) => lesson.section === group);
+        html += `<div class="nav-section"><div class="nav-section-title"><span>${esc(group)}</span><span class="nav-section-count">${items.length.toString().padStart(2, '0')}</span></div>`;
+        html += items.map((lesson) => `<button class="nav-item ${activeId === lesson.id ? 'active' : ''}" type="button" data-step="${esc(lesson.id)}" ${activeId === lesson.id ? 'aria-current="step"' : ''}><span class="nav-icon">${lesson.icon}</span><span class="nav-text">${esc(lesson.title)}</span>${completed.has(lesson.id) ? '<span class="nav-done" aria-label="Complete">✓</span>' : `<span class="nav-num">${String(lessons.indexOf(lesson) + 1).padStart(2, '0')}</span>`}</button>`).join('');
+        html += '</div>';
+      }
+      if (!visible.length) html += '<p class="no-results">No lessons match that search. Try “DHCP”, “WebFig”, or “QEMU”.</p>';
+      navRoot.innerHTML = html;
+      const count = doneCount();
+      const pct = Math.round((count / lessons.length) * 100);
+      document.getElementById('sideProgressText').textContent = `${count} / ${lessons.length} complete`;
+      document.getElementById('sideProgressFill').style.width = `${pct}%`;
+      document.getElementById('topProgressText').textContent = `${pct}%`;
+    }
+    function pathStrip(path) {
+      if (!path?.length) return '';
+      return `<div class="path-strip" aria-label="Menu path">${path.map((part, i) => `${i ? '<span class="path-chevron">›</span>' : ''}<span class="path-item">${esc(part)}</span>`).join('')}</div>`;
+    }
+    function renderScreen(lesson) {
+      if (lesson.screen === 'boot' || lesson.screen === 'password' || lesson.screen === 'qemu' || lesson.screen === 'shutdown') {
+        const screenData = {
+          qemu: { title: 'qemu-system-x86_64 · host terminal', lines: '<span class="term-dim">$ </span><span class="term-command">qemu-system-x86_64 -machine q35 -accel kvm ...</span><br><span class="term-dim">QEMU emulator · x86_64 · 1024 MiB guest RAM</span><br><span class="term-dim">user network: hostfwd 127.0.0.1:8080 → guest:80</span><br><span class="term-warning">Example launch view — no process is running in this page.</span><br><br><span class="term-prompt">CHR disk</span> · qcow2<br><span class="term-prompt">NIC</span> · virtio · user-mode NAT<br><span class="term-prompt">console</span> · nographic' },
+          boot: { title: 'RouterOS console · example output', lines: '<span class="term-dim">MikroTik RouterOS 7.x (stable) · illustrative</span><br><span class="term-dim">CHR x86_64 · QEMU guest</span><br><br><span class="term-warning">Login: admin</span><br><span class="term-dim">Password: [press Enter if blank]</span><br><br><span class="term-prompt">[admin@CHR-STUDENT-01] &gt;</span> <span class="term-command">/system resource print</span><br><span class="term-dim">uptime: 00:18:42 · cpu: QEMU · memory: 1024 MiB</span><br><span class="term-prompt">[admin@CHR-STUDENT-01] &gt;</span><span class="term-blink"></span><br><br><span class="term-warning">Example console screen — not captured from a live VM.</span>' },
+          password: { title: 'RouterOS console · password change', lines: '<span class="term-dim">First login · local console</span><br><span class="term-prompt">[admin@CHR] &gt;</span> <span class="term-command">/password</span><br><span class="term-dim">old password: [Enter if blank]</span><br><span class="term-dim">new password: </span><span class="term-command">••••••••••••••••</span><br><span class="term-dim">confirm new password: </span><span class="term-command">••••••••••••••••</span><br><br><span class="term-prompt">Password updated.</span><br><span class="term-warning">Illustrative prompt only — never type a real password into this page.</span>' },
+          shutdown: { title: 'RouterOS console · graceful shutdown', lines: '<span class="term-prompt">[admin@CHR-STUDENT-01] &gt;</span> <span class="term-command">/system shutdown</span><br><br><span class="term-dim">System will shutdown shortly.</span><br><span class="term-dim">Wait for QEMU to exit before closing the terminal.</span><br><br><span class="term-warning">Example console view · save a backup before shutdown.</span>' }
+        }[lesson.screen];
+        return `<div class="mock-terminal"><div class="term-bar"><span class="term-title"><i class="term-light"></i>${esc(screenData.title)}</span><span>DEMO</span></div><div class="term-screen">${screenData.lines}</div></div>`;
+      }
+      if (lesson.screen === 'login') {
+        return `<div class="mock-browser"><div class="mock-chrome"><div class="browser-dots"><i></i><i></i><i></i></div><div class="mock-address">http://127.0.0.1:8080/ · local port forward</div><span class="mock-shield">◇</span></div><div class="mock-login"><div class="login-card"><div class="login-mark">M</div><h3>RouterOS WebFig</h3><p>Sign in to your router</p><label>Login</label><div class="login-fake-input">admin</div><label>Password</label><div class="login-fake-input">••••••••••••••••</div><button class="login-submit" type="button" tabindex="-1">Log in · visual example</button><div class="mock-login-note">Not connected · no credentials are entered or captured by this training page.</div></div></div></div>`;
+      }
+      const page = screenPages[lesson.screen] || { menu: 'System', trail: 'Learning path', title: lesson.title, tabs: ['Overview'], rows: [['Lesson', lesson.title], ['Status', 'illustrative screen'], ['Layer', lesson.layer]], note: 'Illustrative screen only.' };
+      const menuAliases = { 'DHCP Client': 'DHCP Client', 'DHCP Server': 'DHCP Server', 'Firewall': 'Firewall', 'Services': 'Services', 'Addresses': 'Addresses' };
+      const activeMenu = menuAliases[page.menu] || page.menu;
+      const menuHtml = menuList.map((group) => `<div class="mock-menu-label">${esc(group.group)}</div>${group.items.map((name) => `<div class="mock-menu-item ${name === activeMenu || (activeMenu === 'IP' && name === 'IP') ? 'active' : ''}"><span class="mi">${name === activeMenu ? '●' : '•'}</span>${esc(name)}</div>`).join('')}`).join('');
+      let body = '';
+      if (page.table) {
+        body = `<table class="mock-table"><thead><tr>${page.headings.map((heading) => `<th>${esc(heading)}</th>`).join('')}</tr></thead><tbody>${page.table.map((row) => `<tr>${row.map((cell, i) => `<td>${i === 0 && cell === 'R' ? '<span class="mock-status">RUN</span>' : i === 0 && cell === 'D' ? '<span class="mock-status">DYN</span>' : esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      } else if (page.rows) {
+        body = `<div class="mock-form">${page.rows.map((row) => `<div class="mock-form-row"><span>${esc(row[0])}</span><div class="mock-input">${esc(row[1])}</div></div>`).join('')}</div>`;
+      }
+      return `<div class="mock-browser"><div class="mock-chrome"><div class="browser-dots"><i></i><i></i><i></i></div><div class="mock-address">http://127.0.0.1:8080/webfig/ · illustrative only</div><span class="mock-shield">◇</span></div><div class="mock-topbar"><div class="mock-logo"><span class="mock-logo-icon">M</span> RouterOS WebFig</div><span class="mock-device">CHR-STUDENT-01 · demo state</span><span class="mock-user">admin ⌄</span></div><div class="mock-body"><aside class="mock-menu">${menuHtml}</aside><section class="mock-content"><div class="mock-breadcrumb">${esc(page.trail)}</div><div class="mock-page-head"><h3>${esc(page.title)}</h3><div class="mock-toolbar"><span class="mock-tool-btn">Add New</span><span class="mock-tool-btn">Filter</span></div></div><div class="mock-subtabs">${page.tabs.map((tab, i) => `<span class="${i === 0 ? 'sel' : ''}">${esc(tab)}</span>`).join('')}</div>${body}<div class="mock-inline-note">${esc(page.note)}</div></section></div></div>`;
+    }
+    function renderLayerStack(lesson) {
+      const layers = [
+        ['01', 'Host + QEMU', ['image', 'qemu'].includes(lesson.id)],
+        ['02', 'RouterOS guest + identity', ['boot', 'password', 'identity', 'interfaces'].includes(lesson.id)],
+        ['03', 'Interfaces + IP services', ['wan', 'bridge', 'dhcpserver', 'dns', 'nat', 'firewall', 'services'].includes(lesson.id)],
+        ['04', 'Accounts + recovery', ['users', 'backup', 'shutdown'].includes(lesson.id)],
+        ['05', 'Evidence + next labs', ['verify', 'troubleshoot', 'nextlabs', 'webfig'].includes(lesson.id)]
+      ];
+      return `<div class="layer-panel"><h3>Where this step fits</h3><div class="layer-stack">${layers.map(([num, label, active]) => `<div class="layer-row ${active ? 'active' : ''}"><b>${num}</b><span>${label}</span>${active ? '<span>←</span>' : ''}</div>`).join('')}</div></div>`;
+    }
+    function liveConnectMarkup() {
+      return `<div class="live-connect-card"><h3>Open a real WebFig in a separate tab</h3><p>Opens the address you enter; this course does not proxy requests or handle login credentials. With the sample QEMU command, use the loopback forward.</p><label class="field-label" for="liveUrl">Router URL</label><div class="url-form"><input class="field" id="liveUrl" type="url" value="${esc(liveUrl)}" spellcheck="false" autocomplete="url"><button class="btn small primary" type="button" data-open-webfig>Open ↗</button></div><p class="small-note">Default demo: <code>http://127.0.0.1:8080</code> · plain HTTP is only for a host-local disposable lab.</p></div>`;
+    }
+    function renderQuiz(quiz, lessonId) {
+      if (!quiz) return '';
+      return `<div class="quiz-box" data-quiz="${esc(lessonId)}"><h3>Quick knowledge check</h3><p class="quiz-question">${esc(quiz.question)}</p><div class="quiz-options">${quiz.options.map((option, i) => `<label class="quiz-option"><input type="radio" name="quiz-${esc(lessonId)}" value="${i}"><span>${esc(option)}</span></label>`).join('')}</div><button class="btn small" type="button" data-check-quiz="${esc(lessonId)}" style="margin-top:9px">Check answer</button><p class="quiz-feedback" aria-live="polite"></p></div>`;
+    }
+    function renderOverview() {
+      const sectionCounts = [...new Set(lessons.map((lesson) => lesson.section))].map((section) => ({ section, count: lessons.filter((lesson) => lesson.section === section).length }));
+      return `<section class="home-hero"><div class="hero-copy"><div class="eyebrow">A student-first RouterOS field lab</div><h1>RouterOS CHR<br>on <em>QEMU x86-64</em></h1><p>Boot a MikroTik Cloud Hosted Router, rotate the first-login password, connect to WebFig, then build and verify a safe starter network—one layer at a time.</p><div class="hero-actions"><button class="btn primary" type="button" data-start-demo>Start the guided demo <span aria-hidden="true">→</span></button><button class="btn" type="button" data-go-step="webfig">Open the WebFig lesson</button></div></div><div class="hero-side"><div class="stat-card"><div class="stat-card-head"><span class="stat-title">Interactive course map</span><span class="status-tag">SIMULATION</span></div><div class="stat-grid"><div><span class="stat-number">${lessons.length}</span><span class="stat-label">guided lessons</span></div><div><span class="stat-number">5</span><span class="stat-label">learning layers</span></div><div><span class="stat-number">0</span><span class="stat-label">passwords collected</span></div><div><span class="stat-number">1</span><span class="stat-label">self-contained HTML</span></div></div></div></div></section>
+      <div class="honesty-banner"><span class="notice-icon">!</span><div><strong>Demo boundary — no live CHR is running here.</strong> This workspace has no QEMU executable or CHR image, so the WebFig and console panels below are clearly labelled illustrative learning screens, not screenshots from a live router. The guide never fakes a successful login or stores credentials. Boot CHR on your own host, then open its real WebFig using the connect button in lesson 05.</div></div>
+      <div class="section-heading"><div><h2>See the stack before you configure it</h2><p>Each layer depends on the one below it. Diagnose bottom-up.</p></div></div>
+      <div class="architecture"><div class="arch-card"><span class="arch-no">LAYER 01</span><h3>Host + QEMU</h3><p>x86-64 CPU, virtual disk, emulated NIC, loopback port-forward.</p></div><div class="arch-card"><span class="arch-no">LAYER 02</span><h3>RouterOS CHR</h3><p>Boot the guest, set identity, rotate credentials, map interfaces.</p></div><div class="arch-card"><span class="arch-no">LAYER 03</span><h3>Network services</h3><p>WAN DHCP, LAN bridge/addressing, DHCP, DNS, NAT, filtering.</p></div><div class="arch-card"><span class="arch-no">LAYER 04</span><h3>Management + proof</h3><p>WebFig, services, users, backups, tests, recovery and next labs.</p></div></div>
+      <div class="section-heading"><div><h2>All setup chapters</h2><p>Every chapter is in the left sidebar. Search by feature, or mark each step complete as you work.</p></div><span class="layer-pill">${doneCount()} / ${lessons.length} complete</span></div>
+      <div class="map-grid">${sectionCounts.map(({ section, count }) => `<div class="map-card"><div class="map-card-head"><strong>${esc(section)}</strong><span>${count.toString().padStart(2, '0')} lessons</span></div><p>${section === 'Prepare & boot' ? 'Official CHR image, QEMU setup, and a clean first boot.' : section === 'Secure & connect' ? 'Password rotation and a safe path into real WebFig.' : section === 'Build the starter router' ? 'System identity, interface roles, WAN, LAN, DHCP, DNS, and NAT.' : section === 'Secure & operate' ? 'Firewall thinking, service hardening, users, backups, verification, troubleshooting, and shutdown.' : 'Plan isolated extensions without turning this beginner guide into a risky one-size-fits-all config.'}</p></div>`).join('')}</div>
+      <div class="bottom-grid"><div class="info-card"><h3>Before you start</h3><p>Run the real VM on a computer you control. The demo is offline-friendly and contains no RouterOS image, credentials, or external JavaScript dependencies.</p><ul class="prereq-list"><li><span class="check-mark">✓</span><span>64-bit host with QEMU installed; KVM is optional but faster on supported Linux hosts.</span></li><li><span class="check-mark">✓</span><span>Official CHR QEMU/KVM qcow2 image and enough free disk/RAM for a disposable lab.</span></li><li><span class="check-mark">✓</span><span>Use a host-local forward for WebFig. Do not expose the default HTTP port to a shared network.</span></li><li><span class="check-mark">✓</span><span>A second host-only/TAP network and test client are needed for end-to-end LAN/DHCP tests.</span></li></ul><div class="doc-links"><a class="doc-link" href="${officialDocs.download}" target="_blank" rel="noopener noreferrer">MikroTik downloads ↗</a><a class="doc-link" href="${officialDocs.chr}" target="_blank" rel="noopener noreferrer">CHR guide ↗</a><a class="doc-link" href="${officialDocs.first}" target="_blank" rel="noopener noreferrer">First-time setup ↗</a></div></div><div class="info-card"><h3>Already booted a real router?</h3><p>Open its WebFig in a separate tab. The sample QEMU command forwards host port 8080 to guest port 80.</p><label class="field-label" for="liveUrl">Real router WebFig URL</label><div class="url-form"><input class="field" id="liveUrl" type="url" value="${esc(liveUrl)}" spellcheck="false" autocomplete="url"><button class="btn small primary" type="button" data-open-webfig>Open ↗</button></div><p class="small-note">This only opens a new browser tab when you click. This page never sees or forwards your username or password.</p></div></div>
+      <div class="footer-note">Offline-friendly single-file guide. RouterOS menu names and screens can vary by version, permissions, and WebFig skin. Use the official MikroTik documentation for the exact release you run. <span class="kbd">←</span> <span class="kbd">→</span> navigate lessons.</div>`;
+    }
+    function renderLesson(lesson) {
+      const idx = lessons.indexOf(lesson) + 1;
+      const done = completed.has(lesson.id);
+      const before = idx > 1 ? lessons[idx - 2] : null;
+      const after = idx < lessons.length ? lessons[idx] : null;
+      const stepsHtml = lesson.steps.map((step) => `<li><span>${step}</span></li>`).join('');
+      const verifyHtml = (lesson.verify || []).map((item) => `<li><span>${item}</span></li>`).join('');
+      const cautionHtml = lesson.caution ? `<div class="caution-box"><span class="caution-symbol">⚠</span><span><strong>Safety / rollback:</strong> ${lesson.caution}</span></div>` : '';
+      const linksHtml = lesson.links?.length ? `<div class="doc-links">${lesson.links.map((link) => `<a class="doc-link" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.label)}</a>`).join('')}</div>` : '';
+      const commandHtml = lesson.commands ? `<div class="code-card"><div class="code-head"><span>${esc(lesson.codeLabel || 'RouterOS / host command example')}</span><button class="btn small" type="button" data-copy-command>Copy</button></div><pre><code>${esc(lesson.commands)}</code></pre></div>` : '';
+      const connectHtml = lesson.id === 'webfig' ? liveConnectMarkup() : '';
+      return `<div class="module-header"><div class="module-kicker"><span class="step-count">${String(idx).padStart(2, '0')} / ${String(lessons.length).padStart(2, '0')}</span><span>·</span><span>${esc(lesson.section)}</span><span>·</span><span>${lesson.minutes} min</span><span class="layer-pill">${esc(lesson.layer)}</span></div><h1>${esc(lesson.title)}</h1><p>${esc(lesson.goal)}</p></div>
+      <div class="module-grid"><article class="lesson-card"><div class="goal-box"><div class="goal-icon">◎</div><div><strong>What you are learning</strong><p>${esc(lesson.why)}</p></div></div>
+      <section class="lesson-section"><h2><span class="section-index">1</span> Do the setup</h2><ol class="action-list">${stepsHtml}</ol>${pathStrip(lesson.path)}${commandHtml}${connectHtml}</section>
+      <section class="lesson-section"><h2><span class="section-index">2</span> Verify before continuing</h2><ul class="verify-list">${verifyHtml}</ul></section>
+      ${cautionHtml ? `<section class="lesson-section"><h2><span class="section-index">!</span> Safety and rollback</h2>${cautionHtml}</section>` : ''}
+      ${renderQuiz(lesson.quiz, lesson.id)}${linksHtml}
+      <div class="lesson-footer"><div class="left-actions"><button class="btn ghost small" type="button" data-go-overview>Overview</button>${before ? `<button class="btn small" type="button" data-go-step="${esc(before.id)}">← Previous</button>` : ''}</div><div class="right-actions"><button class="btn small ${done ? '' : 'primary'}" type="button" data-toggle-done="${esc(lesson.id)}">${done ? '✓ Completed' : 'Mark complete'}</button>${after ? `<button class="btn small" type="button" data-go-step="${esc(after.id)}">Next →</button>` : ''}</div></div></article>
+      <aside class="visual-card"><div class="visual-head"><div><span class="eyebrow">Learning screen</span><strong>${esc(lesson.title)}</strong></div><span class="visual-mode">ILLUSTRATIVE</span></div><div class="screen-wrap">${renderScreen(lesson)}<div class="screen-note"><span>WebFig / console training mock</span><span>No router connection</span></div></div>${renderLayerStack(lesson)}<div class="visual-foot"><span>Use the lesson list to explore every screen.</span><div class="screen-switch"><button type="button" aria-label="Previous lesson" data-go-step="${before ? esc(before.id) : esc(lesson.id)}">←</button><button type="button" aria-label="Next lesson" data-go-step="${after ? esc(after.id) : esc(lesson.id)}">→</button></div></div></aside></div>
+      <div class="footer-note">Training mock only — this panel is not a screenshot or a live MikroTik WebFig session. To work on a real CHR, open the host-local WebFig URL above in another tab. Never paste credentials into this course.</div>`;
+    }
+    function renderApp(scrollToTop = false) {
+      renderNav();
+      if (activeId === 'overview') {
+        document.getElementById('breadcrumb').innerHTML = '<strong>Overview</strong><span> / </span>Student lab';
+        mainContent.innerHTML = renderOverview();
+      } else {
+        const lesson = lessons.find((item) => item.id === activeId) || lessons[0];
+        document.getElementById('breadcrumb').innerHTML = `<strong>${esc(lesson.section)}</strong><span> / </span>${esc(lesson.title)}`;
+        mainContent.innerHTML = renderLesson(lesson);
+      }
+      bindLiveUrlInput();
+      if (scrollToTop) { window.scrollTo({ top: 0, behavior: 'smooth' }); mainContent.focus({ preventScroll: true }); }
+    }
+    function bindLiveUrlInput() {
+      const field = document.getElementById('liveUrl');
+      if (field) field.addEventListener('input', () => { liveUrl = field.value; });
+    }
+    function goTo(id, scroll = true) {
+      activeId = id;
+      renderApp(scroll);
+      closeMobileNav();
+    }
+    function closeMobileNav() {
+      sidebar.classList.remove('open');
+      sidebarBackdrop.classList.remove('show');
+    }
+    function openLiveWebfig() {
+      const field = document.getElementById('liveUrl');
+      const raw = field ? field.value.trim() : liveUrl.trim();
+      liveUrl = raw || 'http://127.0.0.1:8080';
+      let parsed;
+      try { parsed = new URL(liveUrl); } catch (_) { showToast('Enter a complete URL such as http://127.0.0.1:8080'); return; }
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+        showToast('Use an http:// or https:// URL without embedding credentials.');
+        return;
+      }
+      window.open(parsed.href, '_blank', 'noopener,noreferrer');
+      showToast('Opened a new tab. Sign in on the router page; this guide does not handle credentials.');
+    }
+    function markDone(id) {
+      if (completed.has(id)) completed.delete(id); else completed.add(id);
+      saveProgress();
+      renderApp(false);
+      showToast(completed.has(id) ? 'Lesson marked complete.' : 'Lesson marked incomplete.');
+    }
+    function copyCommand(button) {
+      const code = button.closest('.code-card')?.querySelector('code')?.textContent || '';
+      if (!code) return;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(code).then(() => showToast('Command copied. Review placeholders and interface names before running.')).catch(() => showToast('Clipboard unavailable. Select and copy the command manually.'));
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = code; temp.setAttribute('readonly', ''); temp.style.position = 'fixed'; temp.style.opacity = '0';
+        document.body.appendChild(temp); temp.select();
+        try { document.execCommand('copy'); showToast('Command copied. Review placeholders and interface names before running.'); }
+        catch (_) { showToast('Clipboard unavailable. Select and copy the command manually.'); }
+        temp.remove();
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const step = event.target.closest('[data-step]');
+      if (step) { goTo(step.dataset.step); return; }
+      if (event.target.closest('[data-overview], [data-go-overview]')) { goTo('overview'); return; }
+      const go = event.target.closest('[data-go-step]');
+      if (go) { goTo(go.dataset.goStep); return; }
+      if (event.target.closest('[data-start-demo]')) { goTo('image'); return; }
+      if (event.target.closest('[data-toggle-done]')) { markDone(event.target.closest('[data-toggle-done]').dataset.toggleDone); return; }
+      if (event.target.closest('[data-copy-command]')) { copyCommand(event.target.closest('[data-copy-command]')); return; }
+      if (event.target.closest('[data-open-webfig]')) { openLiveWebfig(); return; }
+      const check = event.target.closest('[data-check-quiz]');
+      if (check) {
+        const id = check.dataset.checkQuiz;
+        const lesson = lessons.find((item) => item.id === id);
+        const box = check.closest('.quiz-box');
+        const selected = box.querySelector(`input[name="quiz-${id}"]:checked`);
+        const feedback = box.querySelector('.quiz-feedback');
+        feedback.className = 'quiz-feedback';
+        if (!selected) { feedback.textContent = 'Choose an answer first.'; return; }
+        if (Number(selected.value) === lesson.quiz.answer) { feedback.classList.add('good'); feedback.textContent = lesson.quiz.explanation; }
+        else { feedback.classList.add('bad'); feedback.textContent = 'Not quite. Re-read the layer and path above, then try again.'; }
+        return;
+      }
+    });
+    lessonSearch.addEventListener('input', () => { filterText = lessonSearch.value; renderNav(); });
+    document.getElementById('resetProgress').addEventListener('click', () => {
+      if (!completed.size) { showToast('No saved checkmarks to clear.'); return; }
+      if (window.confirm('Clear all lesson checkmarks saved in this browser?')) { completed.clear(); saveProgress(); renderApp(false); showToast('Lesson progress cleared.'); }
+    });
+    document.getElementById('mobileMenu').addEventListener('click', () => { sidebar.classList.add('open'); sidebarBackdrop.classList.add('show'); });
+    sidebarBackdrop.addEventListener('click', closeMobileNav);
+    document.addEventListener('keydown', (event) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      const index = currentIndex();
+      if (event.key === 'ArrowRight' && activeId !== 'overview' && index >= 0 && index < lessons.length - 1) goTo(lessons[index + 1].id);
+      if (event.key === 'ArrowLeft' && activeId !== 'overview' && index > 0) goTo(lessons[index - 1].id);
+      if (event.key === 'Escape') closeMobileNav();
+    });
+    renderApp(false);
+  </script>
+</body>
+</html>
