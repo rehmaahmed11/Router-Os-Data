@@ -1,0 +1,22 @@
+{
+  "name": "webfig-archive",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capture real RouterOS WebFig DOM and observed navigation into one offline HTML file",
+  "type": "module",
+  "bin": {
+    "webfig-archive": "bin/webfig-archive.mjs"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "check": "node --check bin/webfig-archive.mjs && node --check src/recorder.mjs && node --check src/snapshot.mjs && node --check src/export.mjs",
+    "browser:install": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2",
+    "postcss-value-parser": "^4.2.0"
+  }
+}
