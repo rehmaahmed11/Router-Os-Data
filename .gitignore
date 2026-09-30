@@ -1,0 +1,12 @@
+node_modules/
+.artifacts/
+captures/
+*.img
+*.qcow2
+*.vmdk
+*.vdi
+*.iso
+*.zip
+*.trace
+playwright-report/
+test-results/
